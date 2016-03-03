@@ -1,0 +1,2 @@
+# carefree-automated-language-models
+Tool to build efficient vector space and n-gram language models from a stream of arbitrarily-structured documents using builtin python data types.  Never store a token more than once- always use an ID. Count n-grams with tries, not tables. Make everything easily configurable. Build a language model CALMly- spend your time thinking about preprocessing choices, not the implementation.
