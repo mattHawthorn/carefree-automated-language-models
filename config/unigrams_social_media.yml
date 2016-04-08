@@ -1,0 +1,85 @@
+---
+sequence:
+    # weird unicode whitespace
+    - op: replace
+      arguments:
+          pattern: '\xa0'
+          repl: ' '
+    - op: lower
+    # repeated chars; reduce to 2 max
+    - op: replace
+      arguments:
+          pattern: '([a-zA-Z])\1{2,}'
+          repl: '\1\1'
+    # underscores to spaces
+    - op: replace
+      arguments:
+          pattern: '[_]'
+          repl: ' '
+    # happy emoticons
+    - op: replace
+      args:
+          pattern: '(:|;)-?\)'
+          repl: ' _smiley_ '
+    # sad emoticons
+    - op: replace
+      args:
+          pattern: '>?:-?\('
+          repl: ' _frowny_ '
+    # floating point and ints
+    - op: replace
+      arguments:
+          pattern: '[0-9]+\.?[0-9]*'
+          repl: ' _num_ '
+    # percent
+    - op: replace
+      arguments:
+          pattern: '_num_[\s]*?%'
+          repl: ' _percent_ '
+    # cash
+    - op: replace
+      arguments:
+          pattern: '\$[\s]*_num_'
+          repl: ' _currency_ '
+    # potentially useful repeat puntuation; split it off
+    - op: replace
+      args:
+          pattern: '([!?$\*\+])\1+'
+          repl: ' _\1\1_ '
+    # potentially useful puntuation; split it off
+    - op: replace
+      args:
+          pattern: '[^_]([!?$\*\+])[^_]'
+          repl: ' _\1_ '
+    # all remaining unwanted chars
+    - op: replace
+      arguments:
+          pattern: "[^'a-zA-Z!?$*+_]"
+          repl: ' '
+    # tokenize on whitespace
+    - op: tokenize
+      args: 
+          name: RegexpTokenizer
+          kwargs: 
+                pattern: '\s+'
+                gaps: true
+                discard_empty: true
+    # remove stopwords prior to stemming
+    - op: stopwords
+    
+    # and stem what's left
+    - op: stem
+      args:
+          name: SnowballStemmer
+          kwargs:
+              language: english
+              ignore_stopwords: True          
+
+
+ngrams:
+    n: 1
+    max stopwords: 0
+stopwords:
+    english.stop
+#stopwords: [and,the]          
+...
