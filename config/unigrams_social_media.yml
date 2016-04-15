@@ -1,4 +1,6 @@
 ---
+# handles simple emoticons and repeated characters, as well as specific 
+# categories of quantitative values
 sequence:
     # weird unicode whitespace
     - op: replace
@@ -19,12 +21,12 @@ sequence:
     # happy emoticons
     - op: replace
       args:
-          pattern: '(:|;)-?\)'
+          pattern: '(:|;)(-|^)?\)'
           repl: ' _smiley_ '
     # sad emoticons
     - op: replace
       args:
-          pattern: '>?:-?\('
+          pattern: '>?:(-|^)?\('
           repl: ' _frowny_ '
     # floating point and ints
     - op: replace
@@ -49,8 +51,8 @@ sequence:
     # potentially useful puntuation; split it off
     - op: replace
       args:
-          pattern: '[^_]([!?$\*\+])[^_]'
-          repl: ' _\1_ '
+          pattern: '([^_]|^)([!?$\*\+])([^_]|$)'
+          repl: ' _\2_ '
     # all remaining unwanted chars
     - op: replace
       arguments:

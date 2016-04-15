@@ -150,7 +150,8 @@ class BagOfWordsCorpus:
         newDoc = Document(record=record,textAttribute=self.textAttribute if self.keepText else None,
                           IDAttribute=self.IDAttribute,docAttributes=self.docAttributes)
         
-        bagOfWords = self.processor.bagOfWords(record[self.textAttribute])
+        tokens = self.processor.process(record[self.textAttribute])
+        bagOfWords = self.processor.bagOfWords(tokens)
         
         # add the unique tokens to the vocabulary, generating ID's for them
         self.vocab.add(bagOfWords.keys())
@@ -164,6 +165,9 @@ class BagOfWordsCorpus:
     
         # store the bag of words in efficient ID form
         newDoc.bagOfWords = bagOfIDs
+        # store the tokens if specified; for training ngram models
+        if self.keepTokens:
+            newDoc.tokens = tokens
         
         # Get an ID
         if self.IDAttribute:
@@ -177,7 +181,7 @@ class BagOfWordsCorpus:
 
     def bagOfIDs(self,bagOfWords):
         # this returns a bag of IDs *only for ngrams/tokens in the dictionary*; no updates
-        bagOfIDs = dict()
+        bagOfIDs = BagOfWords()
         # consume with popitem()
         while bagOfWords:
             ngram, count = bagOfWords.popitem()
@@ -241,16 +245,20 @@ class BagOfWordsCorpus:
 
     
     # remove an iterable of ngrams from the corpus, including each document's bagOfWords if indicated
-    def removeNgrams(self,ngrams,docs=False):
+    def removeTerms(self,terms,docs=False):
         # get the ngram IDS from the vocab for dropping them in all the other structures
-        ngramIDs = [self.vocab.ID[ngram] for ngram in ngrams]
-        self.vocab.drop(ngrams)
+        terms = set(terms)
+        ngramIDs = [self.vocab.ID[term] for term in terms if term in self.vocab.ID]
+        self.vocab.drop(terms)
         self.DF.drop(ngramIDs)
         self.TTF.drop(ngramIDs)
         
-        if docs == True:
-            for doc in self.docs:
-                self.docs[doc].bagOfWords.drop(ngramIDs)
+        if docs:
+            for doc in self.docs.values():
+                bagOfWords = doc.bagOfWords
+                delkeys = set(bagOfWords).difference(self.vocab.token)
+                doc.bagOfWords.drop(delkeys)
+        
         
     # Allows direct access to docs as Corpus[docID]
     def __getitem__(self,docID):
@@ -269,7 +277,9 @@ class BagOfWordsCorpus:
     def __iter__(self):
         return iter(self.docs)
             
-    # Allows access to the dictionary (hashtable) method keys()
+    # Allows access to the dictionary method keys()
     def keys(self):
-        return self.docs.keys()
-        
+        if type(self.docs) is dict:
+            return self.docs.keys()
+        elif type(self.docs) is list:
+            return range(len(self.docs))

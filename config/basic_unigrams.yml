@@ -1,0 +1,46 @@
+---
+sequence:
+    - op: lower
+    # floating point and ints
+    - op: replace
+      arguments:
+          pattern: '[0-9]+\.?[0-9]*'
+          repl: ' NUM '
+    # remove quotes
+    - op: replace
+      arguments:
+          pattern: "'*\\s+'*"
+          repl: ' '
+    # all remaining unwanted chars
+    - op: replace
+      arguments:
+          pattern: "[^'a-zA-Z]"
+          repl: ' '
+    # tokenize on whitespace
+    - op: tokenize
+      args: 
+          name: RegexpTokenizer
+          kwargs: 
+                pattern: '\s+'
+                gaps: true
+                discard_empty: true
+    # remove stopwords prior to stemming
+    - op: stopwords    
+    # and stem what's left
+    - op: stem
+      args:
+          name: SnowballStemmer
+          kwargs:
+              language: english
+              ignore_stopwords: True          
+
+
+ngrams:
+    # put whatever n you like here, or a list of n's like [1,2] if you're collecting
+    # multiple lengths, e.g. for a vector-space model
+    n: 1
+    max stopwords: 0
+stopwords:
+    english.stop
+#stopwords: [and,the]          
+...
