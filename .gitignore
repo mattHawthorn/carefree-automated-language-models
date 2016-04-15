@@ -6,10 +6,7 @@ sandbox/
 *~
 *.swp
 *.swo
-
-objects.py
-processes.py
-
+*TODO.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
