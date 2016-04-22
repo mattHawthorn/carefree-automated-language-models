@@ -36,7 +36,13 @@ class Document:
         # unpack attributes into a namedtuple
         docAttributes = list(docAttributes)
         self._len = len(docAttributes)
-        self.attributes = [(attr,record[attr]) for attr in docAttributes if attr in record]
+        self.attributes = []
+        for attr in docAttributes:
+            try:
+                self.attributes.append((attr,record[attr]))
+            except (KeyError, IndexError) as e:
+                self.attributes.append((attr,None))
+        
         
     # this allows for dict-like access to corpus-specific features in addition to dot notation for the
     # standard features (BOW, text, ID, tokens)
@@ -104,8 +110,7 @@ class BagOfWordsCorpus:
     processor is of class Processor
     TTF and DF are dicts of total term frequencies and document frequencies respectively.
     """
-    def __init__(self,processor,docAttributes=None,textAttribute=None,IDAttribute=None,keepText=False,keepTokens=False,
-                 DF=True,TTF=True,dfweighting=IDF,tfweighting=sublinearTF):
+    def __init__(self,processor,textAttribute=None,IDAttribute=None,docAttributes=None,keepText=False,keepTokens=False):
         # the hastable of docs; initialize empty
         self.docs = dict()
         self.docCount = 0
@@ -128,13 +133,11 @@ class BagOfWordsCorpus:
         max_n = max(processor.n)
 
         # Hashtable to keep track of TTF; initialize empty
-        if TTF:
-            #self.TTF = BagOfJoinedNgrams(max_n) if self.processor.joinChar else BagOfNgrams(max_n)
-            self.TTF = BagOfWords()
+        #self.TTF = BagOfJoinedNgrams(max_n) if self.processor.joinChar else BagOfNgrams(max_n)
+        self.TTF = BagOfWords()
         # Hashtable to keep track of TTF; initialize empty
-        if DF:
-            #self.DF = BagOfJoinedNgrams(max_n) if self.processor.joinChar else BagOfNgrams(max_n)
-            self.DF = BagOfWords()
+        #self.DF = BagOfJoinedNgrams(max_n) if self.processor.joinChar else BagOfNgrams(max_n)
+        self.DF = BagOfWords()
             
         # term weighting for similarity queries
         self.dfweighting = dfweighting
@@ -165,6 +168,10 @@ class BagOfWordsCorpus:
     
         # store the bag of words in efficient ID form
         newDoc.bagOfWords = bagOfIDs
+        
+        # Increment the corpus total term count
+        self.totalTokens += sum(baOfIDs.values())
+        
         # store the tokens if specified; for training ngram models
         if self.keepTokens:
             newDoc.tokens = tokens
@@ -174,7 +181,7 @@ class BagOfWordsCorpus:
             docID = record[self.IDAttribute]
         else:
             docID = self.docCount
-
+        
         # and finally store the document record in the corpus
         self.docs[docID] = newDoc
         self.docCount += 1
@@ -194,8 +201,8 @@ class BagOfWordsCorpus:
     def cosine(self,docID,bagOfIDs):
         vector = self[docID].bagOfWords
         
-        return(cosineSimilarity(vector,bagOfIDs,DF=self.DF,docCount=self.docCount,
-                                dfweighting=self.dfweighting,tfweighting=self.tfweighting))
+        return cosineSimilarity(vector,bagOfIDs,DF=self.DF,docCount=self.docCount,
+                                dfweighting=IDF,tfweighting=sublinearTF)
 
     def query(self,string,n):
         bagOfIDs = self.bagOfIDs(self.processor.bagOfWords(string))
@@ -206,6 +213,8 @@ class BagOfWordsCorpus:
     # Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs
     def lowDFTerms(self,atMost=None, bottomN=None):
         if atMost:
+            if float(atMost) < 1.0:
+                atMost = int(atMost*len(self.docs))
             tokens = [self.vocab.token[ID] for ID in self.DF if self.DF[ID] <= atMost]
         elif bottomN:
             sortedDF = sorted(self.DF.items(), key=itemgetter(1), reverse=False)
@@ -216,6 +225,8 @@ class BagOfWordsCorpus:
     # Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs
     def highDFTerms(self,atLeast=None, topN=None):
         if atLeast:
+            if float(atLeast) < 1.0:
+                atLeast = int(atLeast*len(self.docs)) + 1
             tokens = [self.vocab.token[ID] for ID in self.DF if self.DF[ID] >= atLeast]
         elif topN:
             sortedDF = sorted(self.DF.items(), key=itemgetter(1), reverse=True)
@@ -226,6 +237,8 @@ class BagOfWordsCorpus:
         # Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs
     def lowTTFTerms(self,atMost=None, bottomN=None):
         if atMost:
+            if float(atMost) < 1.0:
+                    atMost = int(atMost*len(self.docs))
             tokens = [self.vocab.token[ID] for ID in self.TTF if self.TTF[ID] <= atMost]
         elif bottomN:
             sortedDF = sorted(self.TTF.items(), key=itemgetter(1), reverse=False)
@@ -236,6 +249,8 @@ class BagOfWordsCorpus:
     # Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs
     def highTTFTerms(self,atLeast=None, topN=None):
         if atLeast:
+            if float(atLeast) < 1.0:
+                atLeast = int(atLeast*len(self.docs)) + 1
             tokens = [self.vocab.token[ID] for ID in self.TTF if self.TTF[ID] >= atLeast]
         elif topN:
             sortedDF = sorted(self.TTF.items(), key=itemgetter(1), reverse=True)
@@ -283,3 +298,4 @@ class BagOfWordsCorpus:
             return self.docs.keys()
         elif type(self.docs) is list:
             return range(len(self.docs))
+

@@ -82,43 +82,59 @@ class Processor:
 
         # configure ngram handling
         ngramDefaults = {"n":[1],"maxNgramStopwords":None,"maxNgramStopwordProportion":None,
-                "beginToken":None,"endToken":None,"joinChar":None,"stemNgrams":False}
+                "beginToken":None,"endToken":None,"join":True,"joinChar":' ',"stemNgrams":False}
         
         if 'ngrams' in kwargs:
             ngramConfig = cl.clean_args(kwargs['ngrams'],ngramThesaurus,remove=spaces)
             if "n" in ngramConfig and type(ngramConfig["n"]) not in [set,list,tuple]:
                 ngramConfig["n"]=[int(ngramConfig["n"])]
-
+            if 'join' in ngramConfig:
+                if ngramConfig['join']:
+                    ngramConfig['join'] = True
+                    if 'joinChar' not in ngramConfig:
+                        ngramConfig['joinChar'] = ' '
+                else:
+                    ngramConfig['join'] = False
+                    ngramConfig['joinChar'] = None
+            elif 'joinChar' in ngramConfig:
+                ngramConfig['join'] = True
+                
             ngramConfig["n"] = [int(n) for n in ngramConfig["n"]]
             ngramDefaults.update(ngramConfig)
+            
+        # add the ngram config params as class attributes
+        self.__dict__.update(ngramDefaults)
         
-        def load_stopwords(stopwordsFile):
-            if os.path.splitext(stopwordsFile)[1] in cl.legalConfigExtensions:
-                stopwords = set(cl.load_config(stopwordsFile))
-            else:
-                stopwords = set()
-                with open(stopwordsFile,'r') as infile:
-                    for line in infile:
-                        stopwords.add(line.strip())
-            return stopwords
-
+                
+        self.stemmer = None
+        if 'stemmer' in kwargs:
+            params = cl.clean_args(kwargs['stemmer'],argThesauri['stem'])
+            self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
+            self._stem = self.stemmer.stem
+        
+        self.tokenizer = None
+        if 'tokenizer' in kwargs:
+            params = cl.clean_args(kwargs['tokenizer'],argThesauri['tokenize'])
+            self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
+            self._tokenize = self.tokenizer.tokenize
+        
         # read stopwords from a text file or directly as a list or set
         self.stopwords = None
         if stopwordsFile:
-            self.stopwords = set(load_stopwords(stopwordsFile))
+            if 'stopwords' in kwargs:
+                print("Warning: stopwords were specified in both the config file and the init args; "+
+                      "defaulting to the init args stopwords: {}".format(stopwordsFile))
+            self.stopwords = set(loadStopwords(stopwordsFile))
         elif 'stopwords' in kwargs:
             if type(kwargs['stopwords']) is str:
                 stopDir = os.path.split(configFile)[0]
                 stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
-                self.stopwords = set(load_stopwords(stopwordsFile))
+                self.stopwords = set(loadStopwords(stopwordsFile))
             elif type(kwargs['stopwords']) not in [set,list,tuple]:
-                raise ValueError("Stopwords must be given as a set-like or list-like"+
+                raise ValueError("Stopwords must be given as a filename or a set-like or list-like"+
                                  " object in the config, not {}".format(type(kwargs['stopwords'])))
             else:
                 self.stopwords = set(kwargs['stopwords'])
-
-        # add the ngram config params as class attributes
-        self.__dict__.update(ngramDefaults)
 
         # initialize the list of processing steps
         self.sequence = list()
@@ -133,7 +149,7 @@ class Processor:
             # standardize the argument names
             params=None
             
-            if operation not in {"lower","upper","stopwords"}:
+            if operation not in {"lower","upper","stopwords","tokenize","stem"}:
                 if "args" not in op:
                     raise ValueError('{} must have an "args" entry'.format(op))
             if "args" in op:
@@ -193,27 +209,29 @@ class Processor:
                 f = self.removeStopwords
 
             elif operation=='tokenize':
-                tokenizer = nltkTokenizers.__dict__[params['name']]
-                self.tokenizer = tokenizer(**(params['kwargs']))
-                self._tokenize = self.tokenizer.tokenize
+                if self.tokenizer and params:
+                    print("Warning: tokenizer was specified twice in the config; defaulting to the one defined in the operation sequence.")
+                if params:
+                    self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
+                    self._tokenize = self.tokenizer.tokenize
+                if not self.tokenizer:
+                    raise ValueError("Tokenization is indicated, but no tokenizer is specified")
                 f = self.tokenize
                 args = None
 
             elif operation=='stem':
-                # import the nltk stemmer locally
-                if params['name'] == 'SnowballStemmer':
-                    from nltk import SnowballStemmer as stemmer
-                elif params['name'] == 'PorterStemmer':
-                    from nltk import PorterStemmer as stemmer
-                else:
-                    raise ValueError("Unsupported stemmer: {}".format(params['name']))
-                self.stemmer = stemmer( **(params['kwargs']) )
-                self._stem = self.stemmer.stem
+                if self.stemmer and params:
+                    print("Warning: stemmer was specified twice in the config; defaulting to the one defined in the operation sequence.")
+                if params:
+                    self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
+                    self._stem = self.stemmer.stem
+                if not self.stemmer:
+                    raise ValueError("Stemming is indicated, but no stemmer is specified")
                 f = self.stem
                 args = None
                 
             else:
-                raise KeyError("no operation specified for keyword {}".format(operation))
+                raise KeyError("No operation exists for keyword {}".format(operation))
 
             self.sequence.append((f,args))
 
@@ -246,14 +264,14 @@ class Processor:
         else:
             return [f(s) if match(p,s) else s for s in strings]
 
-    def removeStopwords(self,strings,args):
+    def removeStopwords(self,strings,args=None):
         return [s for s in strings if s not in self.stopwords]
 
-    def stem(self,strings,args):
+    def stem(self,strings,args=None):
         return [self._stem(s) for s in strings]
 
-    def tokenize(self,strings,args):
-        return chain.from_iterable([self._tokenize(s) for s in strings])
+    def tokenize(self,strings,args=None):
+        return list(chain.from_iterable([self._tokenize(s) for s in strings]))
 
 
     # the main processing function: take a doc as a string and return a list of tokens
@@ -285,7 +303,7 @@ class Processor:
         max_n = min(max(lengths),len(tokens))
         
         # Max allowable stopwords in the n-grams (may be adjusted later if self.maxNgramStopWordProportion is present)
-        if self.maxNgramStopwords:
+        if self.maxNgramStopwords is not None:
             maxStopwords = self.maxNgramStopwords
         else:
             maxStopwords = max_n
@@ -294,21 +312,23 @@ class Processor:
             maxStopwordProportion = self.maxNgramStopwordProportion
         else:
             maxStopwordProportion = 1.0
-        # Only need to compute stopword occurrences once, and only if specified- a little more space but a lot less time.
+        
         removeStopwords = False
+        # Only need to compute stopword occurrences once, and only if specified- a little more space but a lot less time.
         if maxStopwords < max_n or maxStopwordProportion < 1.0:
             removeStopwords = True
             isStopword = [(1 if token in self.stopwords else 0) for token in tokens]
 
         # only stem at this stage (as opposed to the processor stage) if specified
         if self.stemNgrams:
-            tokens = [self.stem(token) for token in tokens]
+            tokens = self.stem(tokens)
         
         # Pad head and tail of doc with begin and end tokens if specified
         if self.beginToken:
             tokens = [self.beginToken] + tokens
             if removeStopwords:
                 isStopword = [0] + isStopword
+        
         if self.endToken:
             tokens = tokens + [self.endToken]
             if removeStopwords:
@@ -341,9 +361,8 @@ class Processor:
                 # if the stopword policy is specified as a max proportion, 
                 # compare this to self.maxNgramStopwords
                 maxStopwords = min(maxStopwords,int(maxStopwordProportion*n))
-                
                 # use a deque for efficiency for large n to avoid redundant list slicing
-                if n>2:
+                if n>3:
                     start-=1
                     t = deque(['']+tokens[start-n+1:start])
                     s = deque([0]+isStopword[start-n+1:start])
@@ -390,11 +409,45 @@ class Processor:
             # JOIN NGRAMS IF SPECIFIED (note: I may remove this in favor of a single tuple representation for ngrams)
             # second entry is ngram length
             if self.joinChar:
-                ngrams = [(self.joinChar.join(ngram),n) for ngram in ngrams]
+                ngrams = [self.joinChar.join(ngram) for ngram in ngrams]
 
             bag.addList(ngrams)
         
         return bag
+
+
+
+def loadTokenizer(name,**kwargs):
+    from nltk.tokenize import __dict__ as nltkTokenizers
+    if 'Tokenizer' in name and name in nltkTokenizers:
+        tokenizer = nltkTokenizers[name](**kwargs)
+    else:
+        raise ValueError("Unsupported tokenizer: {}. Must specify an nltk tokenizer".format(name))
+    del nltkTokenizers
+    return tokenizer
+
+
+def loadStemmer(name,**kwargs):
+    # import the nltk stemmer locally
+    from nltk import __dict__ as nltkObjects
+    if 'Stemmer' in name and name in nltkObjects:
+        stemmer = nltkObjects[name](**kwargs)
+    else:
+        raise ValueError("Unsupported stemmer: {}. Must specify an nltk stemmer".format(name))
+    del nltkObjects
+    return stemmer
+        
+
+def loadStopwords(stopwordsFile):
+    if os.path.splitext(stopwordsFile)[1] in cl.legalConfigExtensions:
+        stopwords = set(cl.load_config(stopwordsFile))
+    else:
+        stopwords = set()
+        with open(stopwordsFile,'r') as infile:
+            for line in infile:
+                stopwords.add(line.strip())
+    return stopwords
+
 
 
 
@@ -410,16 +463,19 @@ configThesaurus = {"sequence":{"sequence","functions","ops","operations",
                                  "functionsequence","operationsequence","functionorder",
                                  "operationorder","orderofoperations"},
                    "ngrams":{"ngrams","ngram","ngramconfig","ngramparameters","ngramparams"},
-                   "stopwords":{"stopwords"}
+                   "stopwords":{"stopwords"},
+                   "stemmer":{"stemmer","stem","nltkstemmer"},
+                   "tokenizer":{"tokenizer","tokenize","nltktokenizer"}
                   }
 ngramThesaurus = {"n":{"lengths","ngramlengths","orders"},
                   "maxNgramStopwords":{"maxngramstopwords","maxstopwordsperngram","maxstopwords","maxstop"},
                   "maxNgramStopwordProportion":{"maxngramstopwordproportion","maxstopwordproportion",
                                                 "maxstopproportion"},
                   "beginToken":{"begintoken","starttoken","begindocumenttoken","startdocumenttoken",
-                                "begindoctoken","startdoctoken"},
-                  "endToken":{"endtoken","stoptoken","enddocumenttoken","enddoctoken"},
+                                "begindoctoken","startdoctoken","begintag","starttag"},
+                  "endToken":{"endtoken","stoptoken","enddocumenttoken","enddoctoken","endtag","stoptag"},
                   "joinChar":{"joinchar","joincharacter","joinon","join"},
+                  "join":{"join","joinngrams","joinedngrams","joined"},
                   "stemNgrams":{"stemngrams","stem"}}
 opThesaurus = {"operation":{"operation","op","function"},
                "args":{"args","arguments","params","parameters","config","configuration"}
