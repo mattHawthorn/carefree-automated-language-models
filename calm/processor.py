@@ -474,7 +474,7 @@ ngramThesaurus = {"n":{"lengths","ngramlengths","orders"},
                   "beginToken":{"begintoken","starttoken","begindocumenttoken","startdocumenttoken",
                                 "begindoctoken","startdoctoken","begintag","starttag"},
                   "endToken":{"endtoken","stoptoken","enddocumenttoken","enddoctoken","endtag","stoptag"},
-                  "joinChar":{"joinchar","joincharacter","joinon","join"},
+                  "joinChar":{"joinchar","joincharacter","joinon"},
                   "join":{"join","joinngrams","joinedngrams","joined"},
                   "stemNgrams":{"stemngrams","stem"}}
 opThesaurus = {"operation":{"operation","op","function"},

@@ -6,6 +6,9 @@ import time
 from importlib import import_module
 
 
+legalConfigExtensions = ['.json','.yml','.py']
+
+
 # A handy arg parser allowing basic standard arguments: log directory,
 # config file or directory, and verbose flag
 basicParser = argparse.ArgumentParser(add_help=True)
@@ -71,9 +74,6 @@ def clean_args(raw_args,thesaurus,remove=None):
         args[get_name(arg,thesaurus,remove)]=raw_args[arg]
     return args
 
-
-
-legalConfigExtensions = ['.json','.yml','.py']
 
 
 def load_config(path, module_to_dict=True):

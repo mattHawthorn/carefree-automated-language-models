@@ -56,7 +56,7 @@ sequence:
     # all remaining unwanted chars
     - op: replace
       arguments:
-          pattern: "[^'a-zA-Z!?$*+_]"
+          pattern: "[^'\\w!?$*+_]"
           repl: ' '
     # tokenize on whitespace
     - op: tokenize
