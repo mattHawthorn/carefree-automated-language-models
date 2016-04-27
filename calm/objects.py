@@ -46,8 +46,8 @@ class BagOfWords(dict):
     def drop(self,tokens):
         # assume a single ngram/token in these cases
         if type(tokens) in {str,int,tuple}:
-            if token in self:
-                del self[token]
+            if tokens in self:
+                del self[tokens]
             return
         
         # else a list or other iterable of ngrmas/tokens

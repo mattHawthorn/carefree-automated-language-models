@@ -1,5 +1,5 @@
 #coding: utf-8
-from numpy import sqrt, log, square, array, sum, ones
+from numpy import sqrt, log, square, array, sum, ones, zeros
 
 ########################################
 # FUNCTIONS ############################
@@ -15,6 +15,26 @@ def sublinearTF(tf):
     # adding 1 ensures no problems with 0 counts
     return log(tf + 1.0)
 
+
+def tfidfVector(bagOfWords,DF,docCount,dfweighting=IDF,tfweighting = None,normalize=True):
+    keys = list(set(bagOfWords).intersection(DF))
+    v = array([bagOfWords[k] for k in keys],dtype='float')
+    if tfweighting:
+        v = tfweighting(v)
+    idf = dfweighting(array([DF[k] for k in keys]),docCount=docCount)
+    v = idf*v
+    
+    if normalize:
+        norm = sqrt(sum(square(v)))
+        if norm == 0.0:
+            v = zeros(len(v),dtype='float')
+        else:
+            v = v/norm
+    
+    v = dict(zip(keys,v))
+    
+    return v
+    
 
 def cosineSimilarity(bagOfWords1,bagOfWords2,DF=None,docCount=None,dfweighting=IDF,tfweighting=None):
     """
@@ -42,8 +62,6 @@ def cosineSimilarity(bagOfWords1,bagOfWords2,DF=None,docCount=None,dfweighting=I
         idf=dfweighting(array([DF[k] for k in keys]),docCount=docCount)
         v1=idf*v1
         v2=idf*v2
-    else:
-        idf=ones(len(keys),dtype='float')
     
     norm1 = sqrt(sum(square(v1)))
     norm2 = sqrt(sum(square(v2)))

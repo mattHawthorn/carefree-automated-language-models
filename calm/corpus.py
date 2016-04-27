@@ -28,7 +28,7 @@ class Document:
         
         self.ID = None
         self.text = None
-        if IDAttribute:
+        if IDAttribute is not None:
             self.ID = record[IDAttribute]
         if textAttribute:
             self.text = record[textAttribute]
@@ -139,10 +139,6 @@ class BagOfWordsCorpus:
         #self.DF = BagOfJoinedNgrams(max_n) if self.processor.joinChar else BagOfNgrams(max_n)
         self.DF = BagOfWords()
             
-        # term weighting for similarity queries
-        self.dfweighting = dfweighting
-        self.tfweighting = tfweighting
-        
         # Token count for the whole corpus; useful for probability estimates
         self.totalTokens = 0
         
@@ -170,7 +166,7 @@ class BagOfWordsCorpus:
         newDoc.bagOfWords = bagOfIDs
         
         # Increment the corpus total term count
-        self.totalTokens += sum(baOfIDs.values())
+        self.totalTokens += sum(list(bagOfIDs.values()))
         
         # store the tokens if specified; for training ngram models
         if self.keepTokens:
@@ -197,7 +193,11 @@ class BagOfWordsCorpus:
                 bagOfIDs[ID] = count
 
         return bagOfIDs
-
+    
+    
+    def tfidf(self,docID,normalize=True):
+        return tfidfVector(self[docID].bagOfWords,DF=self.DF,docCount=self.docCount,dfweighting=IDF,tfweighting = None,normalize=normalize)
+    
     def cosine(self,docID,bagOfIDs):
         vector = self[docID].bagOfWords
         
@@ -260,7 +260,7 @@ class BagOfWordsCorpus:
 
     
     # remove an iterable of ngrams from the corpus, including each document's bagOfWords if indicated
-    def removeTerms(self,terms,docs=False):
+    def removeTerms(self,terms,docs=True):
         # get the ngram IDS from the vocab for dropping them in all the other structures
         terms = set(terms)
         ngramIDs = [self.vocab.ID[term] for term in terms if term in self.vocab.ID]
@@ -269,10 +269,13 @@ class BagOfWordsCorpus:
         self.TTF.drop(ngramIDs)
         
         if docs:
-            for doc in self.docs.values():
-                bagOfWords = doc.bagOfWords
-                delkeys = set(bagOfWords).difference(self.vocab.token)
-                doc.bagOfWords.drop(delkeys)
+            if type(self.docs) is list:
+                keys = range(0,len(self.docs))
+            elif type(self.docs) is dict:
+                keys = self.docs.keys()
+            for key in keys:
+                delkeys = set(self.docs[key].bagOfWords).difference(self.vocab.token)
+                self.docs[key].bagOfWords.drop(delkeys)
         
         
     # Allows direct access to docs as Corpus[docID]
@@ -288,9 +291,12 @@ class BagOfWordsCorpus:
     def __contains__(self,docID):
         return (docID in self.docs)
 
-    # allow for iteration as in a query, e.g. [similarity(doc) for doc in self]
+    # allow for iteration over doc contents
     def __iter__(self):
-        return iter(self.docs)
+        if type(self.docs) is dict:
+            return iter(self.docs.values())
+        else:
+            return iter(self.docs)
             
     # Allows access to the dictionary method keys()
     def keys(self):

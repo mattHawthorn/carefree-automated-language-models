@@ -280,6 +280,8 @@ class Processor:
         # the the input and result of each intermediate step is a list
         if type(string) is str:
             tokens = [string]
+        else:
+            tokens = string
 
         for f,args in self.sequence:
             tokens = f(tokens,args)
@@ -315,10 +317,9 @@ class Processor:
         
         removeStopwords = False
         # Only need to compute stopword occurrences once, and only if specified- a little more space but a lot less time.
-        if maxStopwords < max_n or maxStopwordProportion < 1.0:
+        if (maxStopwords < max_n or maxStopwordProportion < 1.0) and self.stopwords:
             removeStopwords = True
             isStopword = [(1 if token in self.stopwords else 0) for token in tokens]
-
         # only stem at this stage (as opposed to the processor stage) if specified
         if self.stemNgrams:
             tokens = self.stem(tokens)
@@ -383,15 +384,10 @@ class Processor:
                 else:
                     end+=1
                     ngrams = [tuple(tokens[(i-n):i]) for i in range(start,end) if sum(isStopword[(i-n):i]) <= maxStopwords]
-                    # for i in range(start,end):
-                    #     c = sum(isStopword[(i-n):i]
-                    #     if c > maxStopwords:
-                    #         continue
-                    #     ngram = tuple(tokens[(i-n):i])
             else:
                 # loop without considering stopword counts
                 # use a deque for efficiency for large n to avoid redundant list slicing
-                if n>2:
+                if n>3:
                     start-=1
                     t = deque(['']+tokens[start-n+1:start])
                     j = 0
@@ -406,8 +402,7 @@ class Processor:
                     ngrams = [tuple(tokens[(i-n):i]) for i in range(start,end)]
             
             # done with the main loop
-            # JOIN NGRAMS IF SPECIFIED (note: I may remove this in favor of a single tuple representation for ngrams)
-            # second entry is ngram length
+            # JOIN NGRAMS IF SPECIFIED
             if self.joinChar:
                 ngrams = [self.joinChar.join(ngram) for ngram in ngrams]
 

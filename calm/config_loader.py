@@ -8,6 +8,8 @@ from importlib import import_module
 
 legalConfigExtensions = ['.json','.yml','.py']
 
+# filter for comparing keywords
+spaces = re.compile('[-_\s]')
 
 # A handy arg parser allowing basic standard arguments: log directory,
 # config file or directory, and verbose flag
@@ -38,7 +40,7 @@ class BasicLogger:
             self.log.addHandler(printer)
 
 
-def get_name(synonym,thesaurus,remove=None):
+def get_name(synonym,thesaurus,remove=spaces):
     """
     thesaurus is a dict of the form
         {keyword:{synonym1,synonym2,...}...}
@@ -62,7 +64,7 @@ def get_name(synonym,thesaurus,remove=None):
         return names[0]
 
 
-def clean_args(raw_args,thesaurus,remove=None):
+def clean_args(raw_args,thesaurus,remove=spaces):
     """
     Replaces keys in raw_args (a dict)  with their canonical synonyms from thesaurus.
     Useful for standardizing kwargs from e.g. a config file or user input before passing to a function.
