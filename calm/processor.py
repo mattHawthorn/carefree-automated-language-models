@@ -41,6 +41,9 @@ class Processor:
 
         lower: apply str.lower() to push an entire string to lowercase. Ex.: 
                 {"operation":"lower"}
+                
+        strip: apply str.strip(chars) to a string. Ex.:
+                {"operation":"strip","args":{"chars":" -_.?!\\t\\n"}}
 
         split: apply re.split() to split a string on a regex. Ex.: 
                 {"operation":"split","args":{"pattern":"[\s]+"}}
@@ -149,7 +152,7 @@ class Processor:
             # standardize the argument names
             params=None
             
-            if operation not in {"lower","upper","stopwords","tokenize","stem"}:
+            if operation not in {"lower","upper","strip","stopwords","tokenize","stem"}:
                 if "args" not in op:
                     raise ValueError('{} must have an "args" entry'.format(op))
             if "args" in op:
@@ -169,6 +172,13 @@ class Processor:
                     params['pattern']='('+params['pattern']+')'
                 args = (re.compile(params['pattern']),)
                 f = self.split
+                
+            elif operation=='strip':
+                if not params:
+                    args = (None,)
+                else:
+                    args = (params['chars'],)
+                f = self.strip
 
             elif operation in {'filter','retain'}:
                 pattern = re.compile(params['pattern'])
@@ -241,15 +251,18 @@ class Processor:
         return [re.sub(args[0],args[1],s) for s in strings]
 
     def split(self,strings,args):
-        return chain.from_iterable([re.split(args[0],s) for s in strings])
+        return list(filter(lambda s: s is not None,chain.from_iterable([re.split(args[0],s) for s in strings])))
+        
+    def strip(self,strings,args):
+        return [s.strip(args[0]) for s in strings]
 
     def filter(self,strings,args):
         p = args[0] # the regex pattern
         match = args[1] # the matching function
         if args[2]: # discard/retain
-            return [s for s in strings if not re.match(p,s)]
+            return [s for s in strings if not match(p,s)]
         else:
-            return [s for s in strings if re.match(p,s)]
+            return [s for s in strings if match(p,s)]
 
     def case(self,strings,args):
         f = args[0] # the case function
@@ -477,6 +490,7 @@ opThesaurus = {"operation":{"operation","op","function"},
                }
 operationThesaurus = {"replace":{"replace","substitute","sub","replaceregex","repl",
                             "substituteregex","subregex"},
+               "strip":{"strip","stripchars","peel","peeloff","peelchars"},
                "split":{"split","break","splitonregex","regexsplit","splitregex"},
                "filter":{"filter","remove","filterregex","removeregex",
                          "filterpattern","removepattern"},
@@ -506,6 +520,7 @@ matchThesaurus = {"full":{"full","fullmatch","completematch","totalmatch"},
 argThesauri = {"replace":{"pattern":patternSynonyms,
                           "repl":{"repl","replacement","substitute","replacementstring"}
                           },
+               "strip":{"chars":{"chars","characters","charlist","characterlist"}},
                "split":{"pattern":patternSynonyms,
                         "keep":{"keep","keepsplits","keepregexes","keepsplit","retainsplits","retainsplit"}
                         },

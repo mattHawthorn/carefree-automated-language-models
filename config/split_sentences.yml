@@ -1,0 +1,32 @@
+---
+sequence:
+    # Having space padding on each end helps with the lookbacks
+    - op: sub
+      args:
+          pattern: '^([^\s])'
+          replacement: ' \1'
+    # Strip trailing and leading whitespace and punctuation, which has no bearing on sentence chunking
+    - op: strip
+      args:
+          chars: " \t\n.?!"
+    # tokenize on periods *followed by caps and not preceded by salutations: Mr., Ms., Dr., etc.*
+    # lookback in Python is restricted to fixed-length, so we have to handle 2,3,4.. letter salutations separately.
+    - op: split
+      args:
+          pattern: '(?<![^\w]([Pp]r(of|es)|[Cc]mdr))(?<![^\w]([Mm]rs|[Rr]ev|[Cc]ol|[Hh]on|[GgSs]en))(?<![^\w]([Dd][Rd]|[Ll][Tt]))(?<![^\w][Mm][RrSs])[.]+\s*(?=[A-Z])'
+    # The easy punctuation
+    - op: split
+      args:
+          pattern: '[?!]+\s*'
+    # Consider ellipsis the end of a complete thought, if not a sentence.  Add the lookahead from the end of the monster above if you want caps following
+    - op: split
+      args:
+          pattern: '[.]{2,}'
+    # Strip whitespace
+    - op: strip
+    # remove the isolated punctuation or other erroneous bits
+    - op: filter
+      args:
+          pattern: '.{0,3}'
+          match: 'full'
+...
