@@ -9,11 +9,11 @@ sequence:
     - op: strip
       args:
           chars: " \t\n.?!"
-    # tokenize on periods *followed by caps and not preceded by salutations: Mr., Ms., Dr., etc.*
+    # tokenize on periods *followed by caps and not preceded by salutations or capitalized initials: Mr., Ms., Dr., etc.*
     # lookback in Python is restricted to fixed-length, so we have to handle 2,3,4.. letter salutations separately.
     - op: split
       args:
-          pattern: '(?<![^\w]([Pp]r(of|es)|[Cc]mdr))(?<![^\w]([Mm]rs|[Rr]ev|[Cc]ol|[Hh]on|[GgSs]en))(?<![^\w]([Dd][Rd]|[Ll][Tt]))(?<![^\w][Mm][RrSs])[.]+\s*(?=[A-Z])'
+          pattern: '(?<![^\w]([Pp]r(of|es)|[Cc]mdr))(?<![^\w]([Mm]rs|[Rr]ev|[Cc]ol|[Hh]on|[GgSs]en))(?<![^\w]([Dd][Rd]|[Ll][Tt]))(?<![^\w][Mm][RrSs])(?<![^\w][A-Z])[.]+\s*(?=[A-Z])'
     # The easy punctuation
     - op: split
       args:
