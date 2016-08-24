@@ -1,0 +1,44 @@
+---
+sequence:
+    - op: lower
+    - op: replace
+      args:
+          pattern: "\\s+[0-9]{4}('s\\s|\\s+)"
+          repl: ' _year_ '
+
+    # floating point and ints
+    - op: replace
+      args:
+          pattern: '[0-9]+\.?[0-9]*'
+          repl: ' _num_ '
+    # percent
+    - op: replace
+      args:
+          pattern: '_num_[\s]*?%'
+          repl: ' _percent_ '
+    # cash
+    - op: replace
+      args:
+          pattern: '\$[\s]*_num_'
+          repl: ' _currency_ '
+    # remove single quotes that aren't apostrophes
+    - op: replace
+      args:
+          pattern: "'*\\s+'*"
+          repl: ' '
+    # all remaining unwanted chars
+    - op: replace
+      args:
+          pattern: "[^'a-zA-Z_]"
+          repl: ' '
+    # tokenize on whitespace
+    - op: split
+      args: 
+          pattern: '\s+'
+    # remove stopwords
+    - op: stopwords    
+
+stopwords:
+    english.stop
+#stopwords: [and,the]          
+...

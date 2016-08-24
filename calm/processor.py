@@ -14,7 +14,8 @@ from nltk import tokenize as nltkTokenizers
 
 class Processor:
     """
-    This can be initiated with a dict of keyword args, which can also be read from confilgFile if specified, either .json or .yml
+    This can be initiated with a dict of keyword args, which can also be read from confilgFile if specified, either .json or .yml.
+    kwargs given explicitly will override contents of the config file if both are given.
     Expected arguments are:
         sequence: a list of operations to apply. Each takes the form: 
                 {"operation":name_of_operation, "args":{arg1:value1,arg2:value2, ...}}
@@ -39,18 +40,20 @@ class Processor:
         replace: apply re.sub() to replace a regex with a string. Ex.: 
                 {"operation":"replace","args":{"pattern":"[A-Z]{2,}","replacement":"ACRONYM"}}
 
-        lower: apply str.lower() to push an entire string to lowercase. Ex.: 
-                {"operation":"lower"}
+        lower/upper: apply str.lower()/str.upper() to push an entire string to lower/uppercase., optionally only on a matched pattern
+                (with a full match being the default). Ex.: 
+                {"operation":"lower","args":{"pattern":"\s[A-Z]+\s","match":"partial"}}
                 
         strip: apply str.strip(chars) to a string. Ex.:
                 {"operation":"strip","args":{"chars":" -_.?!\\t\\n"}}
 
-        split: apply re.split() to split a string on a regex. Ex.: 
-                {"operation":"split","args":{"pattern":"[\s]+"}}
+        split: apply re.split() to split a string on a regex. Optionally keep the matched split groups (discard by default)  Ex.: 
+                {"operation":"split","args":{"pattern":"[\s]+","keep":True}}
                 Note: use capturing parentheses on the pattern to keep the split groups.
 
-        filter: remove tokens (input is assumed to be in tokenized form) according to a full match with a regex. Ex.: 
-                {"operation":"filter","args":{"pattern":"[0-9]+"}}
+        filter/retain: remove/keep tokens (input is assumed to be in tokenized form) according to a full/partial match with a regex
+                (with a full match being the default) Ex.: 
+                {"operation":"filter","args":{"pattern":"[0-9]+","match":"full"}}
 
         stopwords: remove stopwords.
                 {"operation":"stopwords","args":{"file":"stopwords.txt"}}
@@ -69,10 +72,9 @@ class Processor:
         if configFile:
             config = cl.load_config(configFile)
 
-            if not kwargs:
-                kwargs = config
-            else:
-                kwargs.update(config)
+            if kwargs:
+                config.update(kwargs)
+            kwargs = config
         
         # standardize the config keywords at the top level
         kwargs = cl.clean_args(kwargs,configThesaurus,remove=spaces)
@@ -168,7 +170,7 @@ class Processor:
                 f = self.replace
 
             elif operation=='split':
-                if 'keep' in params:
+                if params.get('keep',False) in (True,'true','True'):
                     params['pattern']='('+params['pattern']+')'
                 args = (re.compile(params['pattern']),)
                 f = self.split

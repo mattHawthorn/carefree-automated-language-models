@@ -1,3 +1,4 @@
+#coding:utf-8
 from .processor import Processor
 from .functions import *
 from .objects import *
@@ -100,6 +101,9 @@ class Vocabulary:
                 # if that was the maxID, get a new one
                 if ID == self.maxID:
                     self.maxID = max(self.token.keys())
+                    
+    def __len__(self):
+        return len(self.ID)
                     
                                         
 
