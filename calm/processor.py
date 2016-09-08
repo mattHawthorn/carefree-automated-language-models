@@ -5,7 +5,7 @@ from . import config_loader as cl
 from .objects import BagOfWords
 from itertools import chain
 from collections import deque
-from nltk import tokenize as nltkTokenizers
+#from nltk import tokenize as nltkTokenizers
 
 
 ########################################

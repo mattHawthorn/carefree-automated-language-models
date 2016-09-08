@@ -17,22 +17,25 @@ basicParser = argparse.ArgumentParser(add_help=True)
 
 basicParser.add_argument('--config','--config-path',type=str,
         metavar='CONFIG_PATH',help='path to configuration file or directory')
-basicParser.add_argument('--log',type=str,metavar='LOG_DIRECTORY',
+basicParser.add_argument('--log',type=str,metavar='LOG_DIRECTORY',default='/tmp',
         help='path to the directory where logs will be stored')
 basicParser.add_argument('-v','--verbose',action='store_true',
         help='print verbose status messages?')
 
 
 class BasicLogger:
-    def __init__(logDir,name,date_format="%Y-%m-%d_%H:%M",level='INFO',print_to_screen=True):
+    def __init__(self,logDir=None,name=__name__,date_format="%Y-%m-%d_%H:%M",level='INFO',print_to_screen=True):
         self.log = logging.getLogger(name)
-        self.log.setLevel(logging.INFO)
-        handler = logging.FileHandler(os.path.join(logDir,name+"_"+time.strftime(date_format)+'.log'))
-        handler.setLevel(logging.__dict__[level])
-        formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.log.addHandler(handler)
-
+        self.log.setLevel(logging.__dict__[level])
+        
+        if logDir is not None:
+            self.log_path = os.path.join(logDir,name+"_"+time.strftime(date_format)+'.log')
+            handler = logging.FileHandler(self.log_path)
+            handler.setLevel(logging.__dict__[level])
+            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.log.addHandler(handler)
+        
         if print_to_screen:
             printer = logging.StreamHandler()
             printer.setLevel(logging.__dict__[level])

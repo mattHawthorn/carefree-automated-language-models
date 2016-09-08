@@ -8,7 +8,7 @@ Wrappers for third party software.
 So far, David Blei's Dynamic Topic Model (DTM) is supported.
 """
 
-def write_DTM_files(corpus,prefix='/tmp/dtm-',datefunc=lambda doc:doc['date'],
+def write_DTM_files(corpus,prefix='/tmp/dtm/dtm',datefunc=lambda doc:doc['date'],
                     minslice=1000,maxslices=100,slicefunc=None):
     """
     corpus: a calm.corpus.BagOfWordsCorpus
@@ -25,10 +25,15 @@ def write_DTM_files(corpus,prefix='/tmp/dtm-',datefunc=lambda doc:doc['date'],
     if slicefunc is None:
         slicefunc = make_slicefunc(numdocs,minslice,maxslices)
     
-    vocab_path = prefix + 'voc.dat'
-    bow_path = prefix + 'mult.dat'
-    timeslice_path = prefix + 'seq.dat'
-    vocab_order = calm.corpus.Vocabulary()
+    output_dir = os.path.split(prefix)[0]
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    
+    vocab_path = prefix + '-voc.dat'
+    bow_path = prefix + '-mult.dat'
+    timeslice_path = prefix + '-seq.dat'
+    dates_path = prefix + '-dates.dat'
+    vocab_order = Vocabulary()
     
     # "words" are original ID's, "ID's" are int indices for rows in the vocab file
     vocab_order.add(corpus.vocab.token.keys())
@@ -65,6 +70,12 @@ def write_DTM_files(corpus,prefix='/tmp/dtm-',datefunc=lambda doc:doc['date'],
         outfile.write('{}\n'.format(len(timeslices)))
         for numdocs in timeslices:
             outfile.write('{}\n'.format(numdocs))
+            
+    with open(dates_path,'w') as outfile:
+        idx = 0
+        for numdocs in timeslices:
+            outfile.write("{} {}\n".format(datefunc(sorted_docs[idx]),datefunc(sorted_docs[idx+numdocs-1])))
+            idx += numdocs
 
 def make_slicefunc(numdocs,minslice,maxslices):
     numslices = float(numdocs)/float(minslice)
