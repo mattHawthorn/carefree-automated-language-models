@@ -132,8 +132,11 @@ class Processor:
             self.stopwords = set(loadStopwords(stopwordsFile))
         elif 'stopwords' in kwargs:
             if type(kwargs['stopwords']) is str:
-                stopDir = os.path.split(configFile)[0]
-                stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
+                stopwordsFile = kwargs['stopwords']
+                stopDir = os.path.split(stopwordsFile)[0]
+                if len(stopDir) == 0:
+                    stopDir = os.path.split(configFile)[0]
+                    stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
                 self.stopwords = set(loadStopwords(stopwordsFile))
             elif type(kwargs['stopwords']) not in [set,list,tuple]:
                 raise ValueError("Stopwords must be given as a filename or a set-like or list-like"+
