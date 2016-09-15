@@ -24,6 +24,11 @@ sequence:
                 pattern: '\s+'
                 gaps: true
                 discard_empty: true
+    # repreated characters reduce to 2
+    - op: replace
+      args:
+          pattern: '(.)\1{2,}'
+          repl: '\1\1'
     # remove stopwords prior to stemming
     - op: stopwords    
     # and stem what's left

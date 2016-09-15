@@ -40,8 +40,8 @@ sequence:
       args:
           pattern: '(.)\1{2,}'
           repl: '\1\1'    
-    # remove stopwords
-    - op: stopwords    
+#    # remove stopwords
+#    - op: stopwords    
 
 stopwords:
     english.stop

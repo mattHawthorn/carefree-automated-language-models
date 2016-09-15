@@ -104,7 +104,7 @@ class Processor:
             elif 'joinChar' in ngramConfig:
                 ngramConfig['join'] = True
                 
-            ngramConfig["n"] = [int(n) for n in ngramConfig["n"]]
+            ngramConfig["n"] = sorted([int(n) for n in ngramConfig["n"]])
             ngramDefaults.update(ngramConfig)
             
         # add the ngram config params as class attributes
@@ -146,109 +146,112 @@ class Processor:
 
         # initialize the list of processing steps
         self.sequence = list()
-
-
+        
         # for all operations in the processing sequence, define functions and append to the sequence
-        for i, op in enumerate(sequence):
-            # standardize the operation,args keywords for the operation
-            op = cl.clean_args(op,opThesaurus,remove=spaces)
-            # get the standard name for the operation
-            operation = cl.get_name(op['operation'],operationThesaurus)
-            # standardize the argument names
-            params=None
+        for op in sequence:
+            self.appendOp(op)
+        
+        
+    def appendOp(self,op):
+        # standardize the operation,args keywords for the operation
+        op = cl.clean_args(op,opThesaurus,remove=spaces)
+        # get the standard name for the operation
+        operation = cl.get_name(op['operation'],operationThesaurus)
+        # standardize the argument names
+        params=None
+        
+        if operation not in {"lower","upper","strip","stopwords","tokenize","stem"}:
+            if "args" not in op:
+                raise ValueError('{} must have an "args" entry'.format(op))
+        if "args" in op:
+            params = cl.clean_args(op['args'],argThesauri[operation],remove=spaces)
             
-            if operation not in {"lower","upper","strip","stopwords","tokenize","stem"}:
-                if "args" not in op:
-                    raise ValueError('{} must have an "args" entry'.format(op))
-            if "args" in op:
-                params = cl.clean_args(op['args'],argThesauri[operation],remove=spaces)
-                
-            # every function takes a list of strings and returns a list of strings
-            # I prefer to unpack these as list comprehensions to avoid extra function calls (lambda)
-            # and checks to determine whether the result needs to be unlisted.
-            # in those cases where the function returns a list, itertools.chain.from_iterable is used
-            # to unpack the list of lists
-            if operation=='replace':
-                args = (re.compile(params['pattern']),params['repl'])
-                f = self.replace
+        # every function takes a list of strings and returns a list of strings
+        # I prefer to unpack these as list comprehensions to avoid extra function calls (lambda)
+        # and checks to determine whether the result needs to be unlisted.
+        # in those cases where the function returns a list, itertools.chain.from_iterable is used
+        # to unpack the list of lists
+        if operation=='replace':
+            args = (re.compile(params['pattern']),params['repl'])
+            f = self.replace
 
-            elif operation=='split':
-                if params.get('keep',False) in (True,'true','True'):
-                    params['pattern']='('+params['pattern']+')'
-                args = (re.compile(params['pattern']),)
-                f = self.split
-                
-            elif operation=='strip':
-                if not params:
-                    args = (None,)
-                else:
-                    args = (params['chars'],)
-                f = self.strip
+        elif operation=='split':
+            if params.get('keep',False) in (True,'true','True'):
+                params['pattern']='('+params['pattern']+')'
+            args = (re.compile(params['pattern']),)
+            f = self.split
+            
+        elif operation=='strip':
+            if not params:
+                args = (None,)
+            else:
+                args = (params['chars'],)
+            f = self.strip
 
-            elif operation in {'filter','retain'}:
+        elif operation in {'filter','retain'}:
+            pattern = re.compile(params['pattern'])
+            match = 'full'
+            if 'match' in params:
+                match = cl.get_name(params['match'],matchThesaurus)
+            matcher = re.fullmatch if match=='full' else re.search
+            discard = True if operation=='filter' else False
+            args = (pattern,matcher,discard)
+            f = self.filter
+
+        elif operation in {'lower','upper'}:
+            case = str.lower if operation=='lower' else str.upper
+            if not params:
+                args = (case,)
+                f = self.case;
+            else:
                 pattern = re.compile(params['pattern'])
                 match = 'full'
                 if 'match' in params:
                     match = cl.get_name(params['match'],matchThesaurus)
-                matcher = re.fullmatch if match=='full' else re.search
-                discard = True if operation=='filter' else False
-                args = (pattern,matcher,discard)
-                f = self.filter
+                    matcher = re.fullmatch if match=='full' else re.search
+                exclude = False
+                if 'exclude' in params:
+                    if type(params['exclude']) is not bool:
+                        raise ValueError("exclude must be boolean in {} args".format(operation))
+                    else:
+                        exclude = params['exclude']
+                args = (case,pattern,matcher,exclude)
+                f = self.caseMatched
 
-            elif operation in {'lower','upper'}:
-                case = str.lower if operation=='lower' else str.upper
-                if not params:
-                    args = (case,)
-                    f = self.case;
-                else:
-                    pattern = re.compile(params['pattern'])
-                    match = 'full'
-                    if 'match' in params:
-                        match = cl.get_name(params['match'],matchThesaurus)
-                        matcher = re.fullmatch if match=='full' else re.search
-                    exclude = False
-                    if 'exclude' in params:
-                        if type(params['exclude']) is not bool:
-                            raise ValueError("exclude must be boolean in {} args".format(operation))
-                        else:
-                            exclude = params['exclude']
-                    args = (case,pattern,matcher,exclude)
-                    f = self.caseMatched
+        elif operation=='stopwords':
+            if not self.stopwords:
+                print("Warning: stopword removal is indicated, but no stopwords are specified")
+            if max(self.n) > 1:
+                print("Warning: stopword removal is inidicated prior to ngram collection; ngrams will not reflect actual proximity.")
+            args = None
+            f = self.removeStopwords
 
-            elif operation=='stopwords':
-                if not self.stopwords:
-                    print("Warning: stopword removal is indicated, but no stopwords are specified")
-                if max(self.n) > 1:
-                    print("Warning: stopword removal is inidicated prior to ngram collection; ngrams will not reflect actual proximity.")
-                args = None
-                f = self.removeStopwords
+        elif operation=='tokenize':
+            if self.tokenizer and params:
+                print("Warning: tokenizer was specified twice in the config; defaulting to the one defined in the operation sequence.")
+            if params:
+                self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
+                self._tokenize = self.tokenizer.tokenize
+            if not self.tokenizer:
+                raise ValueError("Tokenization is indicated, but no tokenizer is specified")
+            f = self.tokenize
+            args = None
 
-            elif operation=='tokenize':
-                if self.tokenizer and params:
-                    print("Warning: tokenizer was specified twice in the config; defaulting to the one defined in the operation sequence.")
-                if params:
-                    self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
-                    self._tokenize = self.tokenizer.tokenize
-                if not self.tokenizer:
-                    raise ValueError("Tokenization is indicated, but no tokenizer is specified")
-                f = self.tokenize
-                args = None
+        elif operation=='stem':
+            if self.stemmer and params:
+                print("Warning: stemmer was specified twice in the config; defaulting to the one defined in the operation sequence.")
+            if params:
+                self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
+                self._stem = self.stemmer.stem
+            if not self.stemmer:
+                raise ValueError("Stemming is indicated, but no stemmer is specified")
+            f = self.stem
+            args = None
+            
+        else:
+            raise KeyError("No operation exists for keyword {}".format(operation))
 
-            elif operation=='stem':
-                if self.stemmer and params:
-                    print("Warning: stemmer was specified twice in the config; defaulting to the one defined in the operation sequence.")
-                if params:
-                    self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
-                    self._stem = self.stemmer.stem
-                if not self.stemmer:
-                    raise ValueError("Stemming is indicated, but no stemmer is specified")
-                f = self.stem
-                args = None
-                
-            else:
-                raise KeyError("No operation exists for keyword {}".format(operation))
-
-            self.sequence.append((f,args))
+        self.sequence.append((f,args))
 
 
     # private functions for the heavy-lifting tasks behind the scenes
@@ -306,19 +309,29 @@ class Processor:
         
         return [t for t in tokens if t!='']
 
-
-    # take a list of tokens (such as would be produced by self.process, and return a bag of words
-    def bagOfWords(self,tokens,lengths=None):
+    
+    def bagOfWords(self,tokens):
+        bag = BagOfWords()
+        bag.addList(self.process(tokens))
+        return bag
+    
+    # take a string or a list of tokens (such as would be produced by self.process, and return a bag of words
+    def bagOfNgrams(self,tokens,lengths=None):
         # PREPARATIONS
         if not lengths:
             lengths = self.n
         else:
             if type(lengths) not in {set,list,tuple}:
                 lengths = [int(lengths)]
+        
         # if the argument is a raw string rather than a list of tokens, tokenize it
         if type(tokens) is str:
             tokens = self.process(tokens)
-
+        
+        # only stem at this stage (as opposed to the processor stage) if specified
+        if self.stemNgrams:
+            tokens = self.stem(tokens)
+        
         # The greatest-length n-grams the tokens will accomodate:
         max_n = min(max(lengths),len(tokens))
         
@@ -328,105 +341,83 @@ class Processor:
         else:
             maxStopwords = max_n
 
-        if self.maxNgramStopwordProportion:
+        if self.maxNgramStopwordProportion is not None:
             maxStopwordProportion = self.maxNgramStopwordProportion
         else:
             maxStopwordProportion = 1.0
         
-        removeStopwords = False
+        beginStop = None
+        endStop = None
         # Only need to compute stopword occurrences once, and only if specified- a little more space but a lot less time.
         if (maxStopwords < max_n or maxStopwordProportion < 1.0) and self.stopwords:
-            removeStopwords = True
             isStopword = [(1 if token in self.stopwords else 0) for token in tokens]
-        # only stem at this stage (as opposed to the processor stage) if specified
-        if self.stemNgrams:
-            tokens = self.stem(tokens)
-        
-        # Pad head and tail of doc with begin and end tokens if specified
-        if self.beginToken:
-            tokens = [self.beginToken] + tokens
-            if removeStopwords:
-                isStopword = [0] + isStopword
-        
-        if self.endToken:
-            tokens = tokens + [self.endToken]
-            if removeStopwords:
-                isStopword = isStopword + [0]
+            if self.beginToken:
+                beginStop = 0
+            if self.endToken:
+                endStop = 0
         
         # update max_n in case start and end tokens were added
-        max_n = min(max(lengths),len(tokens))
-
+        max_n = min(max(lengths),len(tokens) + (1 if self.beginToken else 0) + (1 if self.endToken else 0))
+        
         # initialize a new BagOfWords object
         bag = BagOfWords()
-
+        
         # MAIN LOOP
         # Collect n-grams of all lengths in the list self.n
         # nothing that follows is pythonic, but it should be fast!
         for n in lengths:
             if n > max_n:
-                break
+                continue
                 
-            start = n
-            end = len(tokens)
-            # skip over the begin and end tokens when counting unigrams
-            if n == 1 and self.beginToken:
-                start += 1
-            if n == 1 and self.endToken:
-                end -= 1
-            # initialize the ngrams
-            ngrams = [None]*(end-start+1)
-            # Main loop for the stopword removal case
-            if removeStopwords:
-                # if the stopword policy is specified as a max proportion, 
-                # compare this to self.maxNgramStopwords
-                maxStopwords = min(maxStopwords,int(maxStopwordProportion*n))
-                # use a deque for efficiency for large n to avoid redundant list slicing
-                if n>3:
-                    start-=1
-                    t = deque(['']+tokens[start-n+1:start])
-                    s = deque([0]+isStopword[start-n+1:start])
-                    c = sum(s)
-                    j = 0
-                    for i in range(start,end):
-                        t.popleft()
-                        c = c - s.popleft()
-                        t.append(tokens[i])
-                        s.append(isStopword[i])
-                        c = c + isStopword[i]
-                        if c > maxStopwords:
-                            continue
-                        else:
-                            ngrams[j] = tuple(t)
-                            j += 1
-                    ngrams = ngrams[0:j]
-                else:
-                    end+=1
-                    ngrams = [tuple(tokens[(i-n):i]) for i in range(start,end) if sum(isStopword[(i-n):i]) <= maxStopwords]
+            if self.stopwords and (maxStopwordProportion < 1.0 or maxStopwords < n):
+                maxStops = min(maxStopwords,int(maxStopwordProportion*n))
+                ngrams = (tup for tup,num_stop in zip(ngramIter(tokens,n,start=self.beginToken,end=self.endToken),
+                                                      rollSum(isStopword, n, start=beginStop, end=endStop))
+                                                      if num_stop <= maxStops)
             else:
-                # loop without considering stopword counts
-                # use a deque for efficiency for large n to avoid redundant list slicing
-                if n>3:
-                    start-=1
-                    t = deque(['']+tokens[start-n+1:start])
-                    j = 0
-                    for i in range(start,end):
-                        t.popleft()
-                        t.append(tokens[i])
-                        ngrams[j] = tuple(t)
-                        j += 1
-                    ngrams = ngrams[0:j]
-                else:
-                    end+=1
-                    ngrams = [tuple(tokens[(i-n):i]) for i in range(start,end)]
-            
+                ngrams = (tup for tup in ngramIter(tokens,n))    
+                
+
             # done with the main loop
             # JOIN NGRAMS IF SPECIFIED
             if self.joinChar:
-                ngrams = [self.joinChar.join(ngram) for ngram in ngrams]
+                ngrams = map(self.joinChar.join, ngrams)
 
             bag.addList(ngrams)
         
         return bag
+        
+        
+    def composeLeft(self,processor,args=None):
+        """
+        Prepend another tokenizer/processor to this one as an initial processing stage.
+        processor: any function which takes optionally a string or an iterable of strings and returns a string or an iterable of strings.
+                   if you desire to compose a calm.processor.Processor P, then pass in P.process for 'processor'
+        args: optionally, pass in a tuple of fixed args to be passed to 'processor'
+        """
+        if args is None:
+            f = lambda s,args: processor(s)
+        else:
+            f = lambda s,args: processor(s,args)
+                
+        self.sequence = [(f,args)] + self.sequence
+        
+    def composeRight(self,processor,args=None):
+        """
+        Append another tokenizer/processor to this one as an post-processing stage.
+        processor: any function which takes optionally a string or an iterable of strings and returns, well, anything you like!
+                   (though keep in mind that if processor returns something other than a string or iterable of strings, further
+                   right composition with calm.processor.Processor objects will be broken)
+                   If you desire to compose a calm.processor.Processor P, then pass in P.process for 'processor'
+        args: optionally, pass in a tuple of fixed args to be passed to 'processor'
+        """
+        if args is None:
+            f = lambda s,args: processor(s)
+        else:
+            f = lambda s,args: processor(s,args)
+                
+        self.sequence = self.sequence + [(f,args)]
+        
 
 
 
@@ -461,6 +452,48 @@ def loadStopwords(stopwordsFile):
                 stopwords.add(line.strip())
     return stopwords
 
+
+def ngramIter(tokens,n,start=None,end=None):
+    ngram = deque()
+    tokens = iter(tokens)
+    i=1
+    if start:
+        i+=1
+        ngram.append(start)
+    while i < n:
+        i+=1
+        ngram.append(next(tokens))
+    for token in tokens:
+        ngram.append(token)
+        yield tuple(ngram)
+        ngram.popleft()
+    if end:
+        ngram.append(end)
+        yield tuple(ngram)
+        
+    
+def rollSum(indicators,n,start=None,end=None):
+    ngram = deque()
+    tokens = iter(indicators)
+    i=1
+    s = 0
+    if start:
+        i+=1
+        ngram.append(start)
+        s += start
+    while i < n:
+        i+=1
+        t = next(tokens)
+        s += t
+        ngram.append(t)
+    for token in tokens:
+        ngram.append(token)
+        s += token
+        yield s
+        s -= ngram.popleft()
+    if end:
+        ngram.append(end)
+        yield s + end
 
 
 
