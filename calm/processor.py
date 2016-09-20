@@ -2,7 +2,7 @@
 import os
 import re
 from . import config_loader as cl
-from .objects import BagOfWords
+from .objects import BagOfWords,BagOfNgrams
 from itertools import chain
 from collections import deque
 #from nltk import tokenize as nltkTokenizers
@@ -67,7 +67,9 @@ class Processor:
                 {"operation":"stem","args":{"name":"SnowballStemmer","kwargs":{"language":"english"}}}
     """
     
-    def __init__(self,configFile=None,stopwordsFile=None,**kwargs):
+    def __init__(self,configFile=None,stopwordsFile=None,bow_constructor=BagOfWords,**kwargs):
+        self.bow_constructor = bow_constructor
+        
         # load the config file if specified
         if configFile:
             config = cl.load_config(configFile)
@@ -89,8 +91,8 @@ class Processor:
         ngramDefaults = {"n":[1],"maxNgramStopwords":None,"maxNgramStopwordProportion":None,
                 "beginToken":None,"endToken":None,"join":True,"joinChar":' ',"stemNgrams":False}
         
-        if 'ngrams' in kwargs:
-            ngramConfig = cl.clean_args(kwargs['ngrams'],ngramThesaurus,remove=spaces)
+        if 'ngramConfig' in kwargs:
+            ngramConfig = cl.clean_args(kwargs['ngramConfig'],ngramThesaurus,remove=spaces)
             if "n" in ngramConfig and type(ngramConfig["n"]) not in [set,list,tuple]:
                 ngramConfig["n"]=[int(ngramConfig["n"])]
             if 'join' in ngramConfig:
@@ -108,20 +110,23 @@ class Processor:
             ngramDefaults.update(ngramConfig)
             
         # add the ngram config params as class attributes
+        self.ngramConfig = ngramDefaults
         self.__dict__.update(ngramDefaults)
         
                 
-        self.stemmer = None
+        self._stemmer = None
         if 'stemmer' in kwargs:
             params = cl.clean_args(kwargs['stemmer'],argThesauri['stem'])
-            self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
-            self._stem = self.stemmer.stem
+            self.stemmer = params
+            self._stemmer = loadStemmer(params['name'],**(params['kwargs']))
+            self._stem = self._stemmer.stem
         
-        self.tokenizer = None
+        self._tokenizer = None
         if 'tokenizer' in kwargs:
             params = cl.clean_args(kwargs['tokenizer'],argThesauri['tokenize'])
-            self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
-            self._tokenize = self.tokenizer.tokenize
+            self.tokenizer = params
+            self._tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
+            self._tokenize = self._tokenizer.tokenize
         
         # read stopwords from a text file or directly as a list or set
         self.stopwords = None
@@ -131,21 +136,24 @@ class Processor:
                       "defaulting to the init args stopwords: {}".format(stopwordsFile))
             self.stopwords = set(loadStopwords(stopwordsFile))
         elif 'stopwords' in kwargs:
-            if type(kwargs['stopwords']) is str:
-                stopwordsFile = kwargs['stopwords']
-                stopDir = os.path.split(stopwordsFile)[0]
-                if len(stopDir) == 0:
-                    stopDir = os.path.split(configFile)[0]
-                    stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
-                self.stopwords = set(loadStopwords(stopwordsFile))
-            elif type(kwargs['stopwords']) not in [set,list,tuple]:
-                raise ValueError("Stopwords must be given as a filename or a set-like or list-like"+
-                                 " object in the config, not {}".format(type(kwargs['stopwords'])))
-            else:
-                self.stopwords = set(kwargs['stopwords'])
-
+            if kwargs['stopwords'] is not None:
+                if type(kwargs['stopwords']) is str:
+                    stopwordsFile = kwargs['stopwords']
+                    stopDir = os.path.split(stopwordsFile)[0]
+                    if len(stopDir) == 0:
+                        stopDir = os.path.split(configFile)[0]
+                        stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
+                    self.stopwords = set(loadStopwords(stopwordsFile))
+                elif type(kwargs['stopwords']) not in [set,list,tuple]:
+                    raise ValueError("Stopwords must be given as a filename or a list-like"+
+                                     " object in the config, not {}".format(type(kwargs['stopwords'])))
+                else:
+                    self.stopwords = set(kwargs['stopwords'])
+        
         # initialize the list of processing steps
-        self.sequence = list()
+        self._sequence = list()
+        # track the config
+        self.sequence = list(sequence)
         
         # for all operations in the processing sequence, define functions and append to the sequence
         for op in sequence:
@@ -223,48 +231,50 @@ class Processor:
                 print("Warning: stopword removal is indicated, but no stopwords are specified")
             if max(self.n) > 1:
                 print("Warning: stopword removal is inidicated prior to ngram collection; ngrams will not reflect actual proximity.")
-            args = None
+            args = ()
             f = self.removeStopwords
 
         elif operation=='tokenize':
-            if self.tokenizer and params:
+            if self._tokenizer is not None and params is not None:
                 print("Warning: tokenizer was specified twice in the config; defaulting to the one defined in the operation sequence.")
-            if params:
-                self.tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
-                self._tokenize = self.tokenizer.tokenize
-            if not self.tokenizer:
+            if params is not None:
+                self.tokenizer = params
+                self._tokenizer = loadTokenizer(params['name'],**(params['kwargs']))
+                self._tokenize = self._tokenizer.tokenize
+            if not self._tokenizer:
                 raise ValueError("Tokenization is indicated, but no tokenizer is specified")
             f = self.tokenize
-            args = None
+            args = ()
 
         elif operation=='stem':
-            if self.stemmer and params:
+            if self._stemmer is not None and params is not None:
                 print("Warning: stemmer was specified twice in the config; defaulting to the one defined in the operation sequence.")
-            if params:
-                self.stemmer = loadStemmer(params['name'],**(params['kwargs']))
-                self._stem = self.stemmer.stem
+            if params is not None:
+                self.stemmer = params
+                self._stemmer = loadStemmer(params['name'],**(params['kwargs']))
+                self._stem = self._stemmer.stem
             if not self.stemmer:
                 raise ValueError("Stemming is indicated, but no stemmer is specified")
             f = self.stem
-            args = None
+            args = ()
             
         else:
             raise KeyError("No operation exists for keyword {}".format(operation))
 
-        self.sequence.append((f,args))
+        self._sequence.append((f,args))
 
 
     # private functions for the heavy-lifting tasks behind the scenes
-    def replace(self,strings,args):
+    def replace(self,strings,*args):
         return [re.sub(args[0],args[1],s) for s in strings]
 
-    def split(self,strings,args):
+    def split(self,strings,*args):
         return list(filter(lambda s: s is not None,chain.from_iterable([re.split(args[0],s) for s in strings])))
         
-    def strip(self,strings,args):
+    def strip(self,strings,*args):
         return [s.strip(args[0]) for s in strings]
 
-    def filter(self,strings,args):
+    def filter(self,strings,*args):
         p = args[0] # the regex pattern
         match = args[1] # the matching function
         if args[2]: # discard/retain
@@ -272,11 +282,11 @@ class Processor:
         else:
             return [s for s in strings if match(p,s)]
 
-    def case(self,strings,args):
+    def case(self,strings,*args):
         f = args[0] # the case function
         return [f(s) for s in strings]
 
-    def caseMatched(self,strings,args):
+    def caseMatched(self,strings,*args):
         f = args[0] # the case function
         p = args[1] # the regex pattern
         match=args[2] # the matching function
@@ -285,38 +295,53 @@ class Processor:
         else:
             return [f(s) if match(p,s) else s for s in strings]
 
-    def removeStopwords(self,strings,args=None):
+    def removeStopwords(self,strings):
         return [s for s in strings if s not in self.stopwords]
 
-    def stem(self,strings,args=None):
+    def stem(self,strings):
         return [self._stem(s) for s in strings]
 
-    def tokenize(self,strings,args=None):
+    def tokenize(self,strings):
         return list(chain.from_iterable([self._tokenize(s) for s in strings]))
 
 
     # the main processing function: take a doc as a string and return a list of tokens
-    def process(self,string):
-        # every processing function in self.sequence will be applied in order 
+    def process(self,string,ngrams=False):
+        if ngrams:
+            return self.ngrams(string)
+        # every processing function in self._sequence will be applied in order 
         # the the input and result of each intermediate step is a list
         if type(string) is str:
             tokens = [string]
         else:
             tokens = string
 
-        for f,args in self.sequence:
-            tokens = f(tokens,args)
+        for f,args in self._sequence:
+            tokens = f(tokens,*args)
         
         return [t for t in tokens if t!='']
 
     
-    def bagOfWords(self,tokens):
+    def bagOfWords(self,tokens,ngrams=False):
         bag = BagOfWords()
-        bag.addList(self.process(tokens))
+        # if the argument is a raw string rather than a list of tokens, tokenize it
+        if type(tokens) is str:
+            tokens = self.process(tokens,ngrams=ngrams)
+        bag.addMany(tokens)
         return bag
+
+    
+    def bagOfNgrams(self,tokens):
+        bag = BagOfNgrams(max_n=self.n[-1],joinchar = self.joinChar)
+        # if the argument is a raw string rather than a list of tokens, tokenize it
+        if type(tokens) is str:
+            tokens = self.process(tokens)
+        bag.addMany(self.ngrams(tokens))
+        return bag
+
     
     # take a string or a list of tokens (such as would be produced by self.process, and return a bag of words
-    def bagOfNgrams(self,tokens,lengths=None):
+    def ngrams(self,tokens,lengths=None):
         # PREPARATIONS
         if not lengths:
             lengths = self.n
@@ -359,12 +384,8 @@ class Processor:
         # update max_n in case start and end tokens were added
         max_n = min(max(lengths),len(tokens) + (1 if self.beginToken else 0) + (1 if self.endToken else 0))
         
-        # initialize a new BagOfWords object
-        bag = BagOfWords()
-        
         # MAIN LOOP
         # Collect n-grams of all lengths in the list self.n
-        # nothing that follows is pythonic, but it should be fast!
         for n in lengths:
             if n > max_n:
                 continue
@@ -375,17 +396,15 @@ class Processor:
                                                       rollSum(isStopword, n, start=beginStop, end=endStop))
                                                       if num_stop <= maxStops)
             else:
-                ngrams = (tup for tup in ngramIter(tokens,n))    
-                
-
+                ngrams = (tup for tup in ngramIter(tokens,n))
+            
             # done with the main loop
             # JOIN NGRAMS IF SPECIFIED
             if self.joinChar:
                 ngrams = map(self.joinChar.join, ngrams)
 
-            bag.addList(ngrams)
-        
-        return bag
+            for ngram in ngrams:
+                yield ngram
         
         
     def composeLeft(self,processor,args=None):
@@ -400,7 +419,7 @@ class Processor:
         else:
             f = lambda s,args: processor(s,args)
                 
-        self.sequence = [(f,args)] + self.sequence
+        self._sequence = [(f,args)] + self._sequence
         
     def composeRight(self,processor,args=None):
         """
@@ -409,16 +428,22 @@ class Processor:
                    (though keep in mind that if processor returns something other than a string or iterable of strings, further
                    right composition with calm.processor.Processor objects will be broken)
                    If you desire to compose a calm.processor.Processor P, then pass in P.process for 'processor'
-        args: optionally, pass in a tuple of fixed args to be passed to 'processor'
+        args: optionally, pass in a tuple of fixed args to be passed to 'processor'.  Unpacked with *, as that is
+            the custom with all other (f,args) tuples in self._sequence, so the processor function should be structured as such.
         """
         if args is None:
-            f = lambda s,args: processor(s)
-        else:
-            f = lambda s,args: processor(s,args)
-                
-        self.sequence = self.sequence + [(f,args)]
+            args = ()
+        self._sequence.append((processor,args))
         
-
+    def __add__(self,processor):
+        p1 = Processor(**{k:value for k,value in self.__dict__.items() if not k.startswith('_') and k not in self.ngramConfig})
+        # copying p2 ensures that mutation will not affect the composed processor
+        p2 = Processor(**{k:value for k,value in processor.__dict__.items() if not k.startswith('_') and k not in processor.ngramConfig})
+        p1.composeRight(p2.process)
+        return p1
+        
+    def __iadd__(self,processor):
+        self.composeRight(processor.process)
 
 
 def loadTokenizer(name,**kwargs):
@@ -453,16 +478,21 @@ def loadStopwords(stopwordsFile):
     return stopwords
 
 
-def ngramIter(tokens,n,start=None,end=None):
+def ngramIter(tokens,n,start=None,end=None,head=False):
     ngram = deque()
     tokens = iter(tokens)
     i=1
     if start:
         i+=1
         ngram.append(start)
+        if head:
+            yield tuple(ngram)
     while i < n:
         i+=1
         ngram.append(next(tokens))
+        if head:
+            yield tuple(ngram)
+
     for token in tokens:
         ngram.append(token)
         yield tuple(ngram)
@@ -475,9 +505,9 @@ def ngramIter(tokens,n,start=None,end=None):
 def rollSum(indicators,n,start=None,end=None):
     ngram = deque()
     tokens = iter(indicators)
-    i=1
+    i=0
     s = 0
-    if start:
+    if start is not None:
         i+=1
         ngram.append(start)
         s += start
@@ -486,14 +516,14 @@ def rollSum(indicators,n,start=None,end=None):
         t = next(tokens)
         s += t
         ngram.append(t)
+    yield s
     for token in tokens:
         ngram.append(token)
         s += token
-        yield s
         s -= ngram.popleft()
-    if end:
-        ngram.append(end)
-        yield s + end
+        yield s
+    if end is not None:
+        yield s + end - ngram.popleft()
 
 
 
@@ -508,18 +538,19 @@ spaces = re.compile('[-_\s]')
 configThesaurus = {"sequence":{"sequence","functions","ops","operations",
                                  "functionsequence","operationsequence","functionorder",
                                  "operationorder","orderofoperations"},
-                   "ngrams":{"ngrams","ngram","ngramconfig","ngramparameters","ngramparams"},
+                   "ngramConfig":{"ngrams","ngram","ngramconfig","ngramparameters","ngramparams"},
                    "stopwords":{"stopwords"},
                    "stemmer":{"stemmer","stem","nltkstemmer"},
                    "tokenizer":{"tokenizer","tokenize","nltktokenizer"}
                   }
-ngramThesaurus = {"n":{"lengths","ngramlengths","orders"},
+ngramThesaurus = {"n":{"lengths","ngramlengths","orders","ns"},
                   "maxNgramStopwords":{"maxngramstopwords","maxstopwordsperngram","maxstopwords","maxstop"},
                   "maxNgramStopwordProportion":{"maxngramstopwordproportion","maxstopwordproportion",
+                                                "maxngramstopwordsproportion","maxstopwordsproportion",
                                                 "maxstopproportion"},
                   "beginToken":{"begintoken","starttoken","begindocumenttoken","startdocumenttoken",
-                                "begindoctoken","startdoctoken","begintag","starttag"},
-                  "endToken":{"endtoken","stoptoken","enddocumenttoken","enddoctoken","endtag","stoptag"},
+                                "begindoctoken","startdoctoken","begintag","starttag","begin"},
+                  "endToken":{"endtoken","stoptoken","enddocumenttoken","enddoctoken","endtag","stoptag","end"},
                   "joinChar":{"joinchar","joincharacter","joinon"},
                   "join":{"join","joinngrams","joinedngrams","joined"},
                   "stemNgrams":{"stemngrams","stem"}}

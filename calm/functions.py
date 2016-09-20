@@ -53,8 +53,9 @@ def cosineSimilarity(bagOfWords1,bagOfWords2,DF=None,docCount=None,dfweighting=I
     
     # relevant terms common to both BOWs
     keys = keys1.union(keys2)
-    v1=array([bagOfWords1[k] if k in bagOfWords1 else 0.0 for k in keys],dtype='float')
-    v2=array([bagOfWords2[k] if k in bagOfWords2 else 0.0 for k in keys],dtype='float')
+    v1=array([bagOfWords1.get(k,0.0) for k in keys],dtype='float')
+    v2=array([bagOfWords2.get(k,0.0) for k in keys],dtype='float')
+
     if tfweighting:
         v1 = tfweighting(v1)
         v2 = tfweighting(v2)
@@ -68,24 +69,5 @@ def cosineSimilarity(bagOfWords1,bagOfWords2,DF=None,docCount=None,dfweighting=I
     if norm1*norm2 == 0.0:
         return 0.0
     
-    # only need the product over the intersection
-    keys2=keys1.intersection(keys2)
-    index=array([key in keys2 for key in keys])
-    
-    return sum(v1[index]*v2[index])/(norm1*norm2)
-    
-    
-class Memoizer:
-    __slots__=('cache','f')
-    def __init__(self,f):
-        self.cache = {}
-        self.f = f
-        
-    def __call__(self,x):
-        try:
-            return self.cache[x]
-        except:
-            value = self.f(x)
-            self.cache[x] = value
-            return value
-        
+    return sum(v1*v2)/(norm1*norm2)
+

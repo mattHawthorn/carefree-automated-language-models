@@ -1,11 +1,10 @@
 from numpy import sum, log, array, zeros, nan_to_num, apply_along_axis, transpose
-from scipy.stats import entropy
+from scipy.stats import entropy, ttest_rel
 from scipy.stats.distributions import chi2
 from functools import reduce
 from operator import itemgetter
 from itertools import combinations
 from random import shuffle
-from scipy.stats import entropy, ttest_rel
 from sklearn.metrics import precision_score, recall_score, f1_score
 from pandas import DataFrame, Index, MultiIndex
 
@@ -136,9 +135,9 @@ class kFolds():
     def __init__(self,keys,k):
         if type(keys) is int:
             keys = list(range(keys))
-        elif type(keys) in {list,tuple}:
+        elif type(keys) in (list,tuple):
             keys = list(range(len(keys)))
-        elif type(keys) in {dict,set,range}:
+        elif type(keys) in (dict,set,range):
             keys = list(keys)
         else:
             raise TypeError("kFolds does not support type {}".format(type(keys)))
@@ -174,7 +173,10 @@ class CV:
     All classifiers are assumed to have a .train(instances,classFunction,features) method, and a
     .classify(instance) method returning an int.
     """
-    def __init__(self,instances,k,classFunction,features=None,metrics=None):
+    def __init__(self,k,instances,classes=None,classFunction=None,features=None,metrics=(precision_score, recall_score, f1_score)):
+        if classes is None and classFunction is None:
+            raise ArgumentError("You must supply either a classFunction or an indexable of class values for the training instances")
+        
         self.instances = instances
         self.k = k
         self.folds = kFolds(instances,self.k)
@@ -203,9 +205,7 @@ class CV:
         if verbose:
             print("Validating {} classifiers on {} folds:".format(len(classifiers),self.k))
         
-        i = -1
-        for train,test in self.folds:
-            i+=1
+        for i,(train,test) in enumerate(self.folds):
             
             for classifier,classifierName in zip(classifiers,names):
                 if verbose:
@@ -245,3 +245,4 @@ class CV:
                 t_comparisons.loc[classifierPair,repr(metric)] = p
         
         return t_comparisons
+
