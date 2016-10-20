@@ -47,6 +47,7 @@ stopwords:
 ngrams:
     n: [1,2]
     maxstopwords: 1
+    maxstopwordproportion: 0.5
     join: True
     joinchar: '_'
     end: 'END'
