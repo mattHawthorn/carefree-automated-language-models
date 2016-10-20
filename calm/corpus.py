@@ -1,13 +1,12 @@
 #coding:utf-8
 from .processor import Processor
-from .functions import *
+from .tfidf import *
 from .objects import *
+from .compression import *
+from numpy import array, uint32
 from .utils import getsize
 from operator import itemgetter
-from numpy import uint8,uint16,uint32,uint64,array
 #from collections import namedtuple
-
-COMPRESSED_TOKEN_TYPES = (uint8,uint16,uint32,uint64)
 
 
 ##################################################
@@ -98,7 +97,7 @@ class Vocabulary:
                 self.ID[token] = self.maxID
                 self.token[self.maxID] = token
      
-    def drop(self,tokens):
+    def dropMany(self,tokens):
         # This can be used to prune a list of stopwords from the vocab.
         # It will in general be more time-efficient to do this after corpus processing,
         # rather than for each document as it comes in.
@@ -116,6 +115,9 @@ class Vocabulary:
                 if ID == self.maxID:
                     self.maxID = max(self.token.keys())
                     
+    def drop(self,token):
+        self.dropMany((token,))
+                    
     def __len__(self):
         return len(self.ID)
                     
@@ -132,11 +134,8 @@ class BagOfWordsCorpus:
         be adjusted to another type (larger or smaller numpy unsigned int types currently) if you suspect a 
         larger/smaller vocab.  Current default of uint32 is more than adequate for all NLP tasks.
     """
-    def __init__(self,processor,textAttribute=None,IDAttribute=None,docAttributes=None,keepText=False,keepTokens=False,keepNgrams=False,compress=True,keyDtype=uint32):
+    def __init__(self,processor,textAttribute=None,IDAttribute=None,docAttributes=None,keepText=False,keepTokens=False,keepNgrams=False,compressTokens=True):
         # the hastable of docs; initialize empty
-        if keyDtype is not None and keyDtype not in COMPRESSED_TOKEN_TYPES:
-            raise ArgumentError("Unsupported type {} for compressed tokens.  Must be one of {}".format(keyDtype,COMPRESSED_TOKEN_TYPES))
-        
         self.docs = (list() if IDAttribute is None else dict())
         self.docCount = 0
         
@@ -155,21 +154,19 @@ class BagOfWordsCorpus:
         # which parts of a doc are stored
         self.keepText = keepText
         self.keepTokens = keepTokens
+        self.compressTokens = compressTokens
         
         self.keepNgrams = keepNgrams
         if keepNgrams and max(self.processor.n) > 1:
-            self._bowFunc = self.processor.BagOfNgrams
+            self._bowFunc = self.processor.bagOfNgrams
         else:
             if keepNgrams:
                 print("Warning: max processor n is 1 but keepNgrams=True; only unigrams will be kept")
             def bowFunc(tokens):
-                return self.processor.BagOfWords(tokens,self.keepNgrams)
+                return self.processor.bagOfWords(tokens,self.keepNgrams)
             self._bowFunc = bowFunc
             self.totalNgrams = tuple([0]*(max(self.processor.n) + 1))
             
-        self.keyDtype = keyDtype
-        self.compress = compress
-        
         # Hashtable to keep track of TTF; initialize empty
         self.TTF = BagOfWords()
         # Hashtable to keep track of TTF; initialize empty
@@ -210,9 +207,10 @@ class BagOfWordsCorpus:
         
         # store the tokens if specified; for training ngram models
         if self.keepTokens:
-            if self.compress:
-                tokens = self.compressTokens(tokens)
-            newDoc.tokens = tokens
+            ids = self.getIDs(tokens)
+            if self.compressTokens:
+                ids = compressInts(ids)
+            newDoc.tokens = ids
         
         # Get an ID
         if self.IDAttribute:
@@ -228,27 +226,38 @@ class BagOfWordsCorpus:
         # this returns a bag of IDs *only for ngrams/tokens in the dictionary*; no updates
         if not self.keepNgrams:
             bagOfIDs = BagOfWords()
-            # consume with popitem()
-            while bagOfWords:
-                ngram, count = bagOfWords.popitem()
-                if ngram in self.vocab.ID:
-                    ID = self.vocab.ID[ngram]
-                    bagOfIDs[ID] = count
+            tokenCounts = ((self.vocab.ID[token],count) for token,count in bagOfWords.items() if token in self.vocab.ID)
+            bagOfIDs._addmanyCounts(tokenCounts)
         else:
             for i,bow in enumerate(bagOfWords.ngrams):
-                bow2 = {self.vocab.ID[token]:count for token,count in bow.items()}
+                bow2 = {self.vocab.ID[ngram]:count for ngram,count in bow.items() if ngram in self.vocab.ID}
                 bagOfWords.ngrams[i] = bow2
                 bagOfIDs = bagOfWords
-        
         return bagOfIDs
-        
-    def compressTokens(self,tokens):
-        # for speed and lack of a safe missing value default, assumes all tokens are in the vocab, 
-        # which is satisfied upon doc ingest
-        return array([self.vocab.ID[token] for token in tokens], dtype=self.keyDtype)
         
     def getTokens(self,ids=None):
         return [self.vocab.token[i] for i in map(int,ids)]
+        
+    def getIDs(self,tokens):
+        return array([self.vocab.ID[token] for token in tokens], dtype=uint32)
+        
+    def getDocTokens(self,docID):
+        ids = self[docID].tokens
+        if self.compressTokens:
+            ids = decompressInts(ids)
+        return self.getTokens(ids)
+        
+    def getDocTokenIDs(self,docID):
+        ids = self[docID].tokens
+        if self.compressTokens:
+            ids = decompressInts(ids)
+        return ids
+        
+    def ttf(self,token):
+        return self.TTF[self.vocab.ID[token]]
+        
+    def df(self,token):
+        return self.DF[self.vocab.ID[token]]
     
     def tfidf(self,docID,normalize=True):
         return tfidfVector(self[docID].bagOfWords,DF=self.DF,docCount=self.docCount,dfweighting=IDF,tfweighting = None,normalize=normalize)
@@ -256,72 +265,66 @@ class BagOfWordsCorpus:
     def cosine(self,docID,bagOfIDs):
         vector = self[docID].bagOfWords
         
-        return cosineSimilarity(vector,bagOfIDs,DF=self.DF,docCount=self.docCount,
-                                dfweighting=IDF,tfweighting=sublinearTF)
+        return cosineSimilarity(vector, bagOfIDs, DF=self.DF, docCount=self.docCount,
+                                dfweighting=IDF, tfweighting=sublinearTF)
     
     def query(self,string,n):
         bagOfIDs = self.bagOfIDs(self.processor.bagOfWords(string))
-        sims = [(docID,self.cosine(docID,bagOfIDs)) for docID in self.docs]
-        sims = sorted(sims,key=itemgetter(1),reverse=True)
+        sims = [(docID, self.cosine(docID,bagOfIDs)) for docID in self.docs]
+        sims = sorted(sims, key=itemgetter(1),reverse=True)
         return sims[0:n]
     
     
-    # Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs
     def lowDFTerms(self,atMost=None, bottomN=None):
-        if atMost:
-            if float(atMost) < 1.0:
-                atMost = int(atMost*len(self.docs))
-            tokens = [self.vocab.token[ID] for ID in self.DF if self.DF[ID] <= atMost]
-        elif bottomN:
-            sortedDF = sorted(self.DF.items(), key=itemgetter(1), reverse=False)
-            IDs = next(zip(*sortedDF[0:bottomN]))
-            tokens = [self.vocab.token[ID] for ID in IDs]
-        return tokens
+        """Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs"""
+        return self._extremeTerms(kind='df',limit=atMost,number=bottomN,how='low')
         
-    # Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs
     def highDFTerms(self,atLeast=None, topN=None):
-        if atLeast:
-            if float(atLeast) < 1.0:
-                atLeast = int(atLeast*len(self.docs)) + 1
-            tokens = [self.vocab.token[ID] for ID in self.DF if self.DF[ID] >= atLeast]
-        elif topN:
-            sortedDF = sorted(self.DF.items(), key=itemgetter(1), reverse=True)
-            IDs = next(zip(*sortedDF[0:topN]))
-            tokens = [self.vocab.token[ID] for ID in IDs]
-        return tokens
-    
-        # Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs
+        """Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs"""
+        return self._extremeTerms(kind='df',limit=atLeast,number=topN,how='high')
+        
     def lowTTFTerms(self,atMost=None, bottomN=None):
-        if atMost:
-            if float(atMost) < 1.0:
-                    atMost = int(atMost*len(self.docs))
-            tokens = [self.vocab.token[ID] for ID in self.TTF if self.TTF[ID] <= atMost]
-        elif bottomN:
-            sortedDF = sorted(self.TTF.items(), key=itemgetter(1), reverse=False)
-            IDs = next(zip(*sortedDF[0:bottomN]))
-            tokens = [self.vocab.token[ID] for ID in IDs]
+        """Select rare terms by DF, either those occurring in at most atMost docs, or the bottom bottomN docs"""
+        return self._extremeTerms(kind='ttf',limit=atMost,number=bottomN,how='low')
+        
+    def highTTFTerms(self,atLeast=None, topN=None):
+        """Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs"""
+        return self._extremeTerms(kind='ttf',limit=atLeast,number=topN,how='high')
+        
+    def _extremeTerms(self,kind='ttf',limit=None,number=None,how='high'):
+        if kind=='ttf':
+            total = self.totalTokens
+            bow = self.TTF
+        elif kind=='df':
+            total = self.docCount
+            bow = self.DF
+        if limit is not None:
+            if float(limit) < 1.0:
+                limit = int(limit*total)
+            else:
+                limit = int(limit)
+            if how=='high':
+                compare = int.__gt__
+            elif how=='low':
+                compare = int.__le__
+            tokens = [self.vocab.token[ID] for ID,count in bow.items() if compare(count,limit)]
+        elif number is not None:
+            if how=='high':
+                reverse = True
+            elif how=='low':
+                reverse = False
+            sorted_bow = sorted(bow.items(), key=itemgetter(1), reverse=reverse)
+            tokens = [self.vocab.token[ID] for ID,count in sorted_bow[0:number]]
         return tokens
         
-    # Select common terms by DF, either those occurring in at least atLeast docs, or the top topN docs
-    def highTTFTerms(self,atLeast=None, topN=None):
-        if atLeast:
-            if float(atLeast) < 1.0:
-                atLeast = int(atLeast*len(self.docs)) + 1
-            tokens = [self.vocab.token[ID] for ID in self.TTF if self.TTF[ID] >= atLeast]
-        elif topN:
-            sortedDF = sorted(self.TTF.items(), key=itemgetter(1), reverse=True)
-            IDs = next(zip(*sortedDF[0:topN]))
-            tokens = [self.vocab.token[ID] for ID in IDs]
-        return tokens
-    
-    # remove an iterable of ngrams from the corpus, including each document's bagOfWords if indicated
     def removeTerms(self,terms,docs=True):
+        """remove an iterable of ngrams/tokens from the corpus, including each document's bagOfWords if indicated"""
         # get the ngram IDS from the vocab for dropping them in all the other structures
         terms = set(terms)
         ngramIDs = [self.vocab.ID[term] for term in terms if term in self.vocab.ID]
-        self.vocab.drop(terms)
-        self.DF.drop(ngramIDs)
-        self.TTF.drop(ngramIDs)
+        self.vocab.dropMany(terms)
+        self.DF.dropMany(ngramIDs)
+        self.TTF.dropMany(ngramIDs)
         
         if docs:
             if type(self.docs) is list:
@@ -330,7 +333,7 @@ class BagOfWordsCorpus:
                 keys = self.docs.keys()
             for key in keys:
                 delkeys = set(self.docs[key].bagOfWords).difference(self.vocab.token)
-                self.docs[key].bagOfWords.drop(delkeys)
+                self.docs[key].bagOfWords.dropMany(delkeys)
         
         
     # Allows direct access to docs as Corpus[docID]
