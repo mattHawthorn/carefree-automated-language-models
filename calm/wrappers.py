@@ -1,5 +1,6 @@
 #coding:utf-8
 from .corpus import Vocabulary
+from .objects import MultiSet
 from math import floor,ceil
 import os
 
@@ -18,7 +19,8 @@ def write_DTM_files(corpus,prefix='/tmp/dtm/dtm',datefunc=lambda doc:doc['date']
     minslice: the minimum number of documents you're willing to put in a timeslice for the DTM. Default is 1000
     maxslices: the maximum number of slices you're willing to give to the DTM. Default is 100
     slicefunc: takes a document's date and its index in sorted temporal order, and returns the index of the time slice
-            for the document. If this is None (default), it is constructed from the args minslice, maxslices
+            for the document. If this is None (default), it is constructed from the args minslice, maxslices.
+            This should of course be monotonically non-decreasing in the date and index.
     """
     
     numdocs = len(corpus.docs)
@@ -50,14 +52,17 @@ def write_DTM_files(corpus,prefix='/tmp/dtm/dtm',datefunc=lambda doc:doc['date']
             
     sorted_docs = sorted(corpus.docs.values(),key=datefunc)
     lastdate = sorted_docs[-1]['date']
-    num_slices = slicefunc(lastdate,len(sorted_docs) - 1) + 1
-    timeslices = [0]*num_slices
+    firstdate = sorted_docs[0]['date']
+    first_slice = slicefunc(firstdate,0)
+    last_slice = slicefunc(lastdate,len(sorted_docs) - 1)
+    num_slices = last_slice - first_slice + 1
+    timeslices = MultiSet()
     
     with open(bow_path,'w') as outfile:
         for idx,doc in enumerate(sorted_docs):
             date = datefunc(doc)
             timeslice = slicefunc(date,idx)
-            timeslices[timeslice] += 1
+            timeslices.add(timeslice)
             
             bow = doc.bagOfWords
             outfile.write(str(len(bow)))
@@ -68,12 +73,12 @@ def write_DTM_files(corpus,prefix='/tmp/dtm/dtm',datefunc=lambda doc:doc['date']
                 
     with open(timeslice_path,'w') as outfile:
         outfile.write('{}\n'.format(len(timeslices)))
-        for numdocs in timeslices:
+        for slice_index, numdocs in sorted(timeslices.items()):
             outfile.write('{}\n'.format(numdocs))
             
     with open(dates_path,'w') as outfile:
         idx = 0
-        for numdocs in timeslices:
+        for slice_index, numdocs in sorted(timeslices.items()):
             outfile.write("{} {}\n".format(datefunc(sorted_docs[idx]),datefunc(sorted_docs[idx+numdocs-1])))
             idx += numdocs
 
