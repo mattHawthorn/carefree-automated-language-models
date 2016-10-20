@@ -1,4 +1,4 @@
-from .functions import *
+from .tfidf import *
 from .objects import BagOfWords
 from .corpus import Document, BagOfWordsCorpus
 from .models import NgramModel

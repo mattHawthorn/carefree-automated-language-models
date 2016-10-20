@@ -1,5 +1,5 @@
 #coding: utf-8
-from numpy import sqrt, log, square, array, sum, ones, zeros
+from numpy import sqrt, log, square, array, sum, dot, ones, zeros
 
 ########################################
 # FUNCTIONS ############################
@@ -61,13 +61,13 @@ def cosineSimilarity(bagOfWords1,bagOfWords2,DF=None,docCount=None,dfweighting=I
         v2 = tfweighting(v2)
     if DF:
         idf=dfweighting(array([DF[k] for k in keys]),docCount=docCount)
-        v1=idf*v1
-        v2=idf*v2
+        v1 *= idf#*v1
+        v2 *= idf#*v2
     
     norm1 = sqrt(sum(square(v1)))
     norm2 = sqrt(sum(square(v2)))
     if norm1*norm2 == 0.0:
         return 0.0
     
-    return sum(v1*v2)/(norm1*norm2)
+    return dot(v1,v2)/(norm1*norm2)
 

@@ -1,4 +1,5 @@
-from .utils import Memoized
+#coding: utf-8
+from .utils import Memoized,ngramIter
 from itertools import repeat
 
 ########################################
@@ -35,19 +36,21 @@ class BagOfWords(dict):
         self._addmanyCounts(bagOfWords.items())
     
     def _addmany(self,tokens):
+        total = 0
         for i,token in enumerate(tokens):
+            total += 1
             if token not in self:
                 self[token] = 1
             else:
                 self[token] += 1
-        self.total += (i + 1)
+        self.total += total
     
-    def _addmanyCounts(self,ngramcounts):
-        for ngram,count in ngramcounts:
-            if ngram not in self:
-                self[ngram] = count
+    def _addmanyCounts(self,tokencounts):
+        for token,count in tokencounts:
+            if token not in self:
+                self[token] = count
             else:
-                self[ngram] += count
+                self[token] += count
             self.total += count
     
     def __iadd__(self,other):
@@ -63,7 +66,11 @@ class BagOfWords(dict):
         for token in tokens:
             if token in self:
                 del self[token]
-            
+
+
+class MultiSet(BagOfWords):
+    pass
+
 
 @Memoized
 def joined_ngram_counter(joinchar):
@@ -195,7 +202,7 @@ class FrequencyTrie(dict):
     """
     __slots__ = ('total','distinct','max_depth','parent','order','_first','_second')
     def __init__(self,max_depth=2,order=1,parent=None):
-        self.order = int(np.sign(order))
+        self.order = -1 if order < 0 else 1
         self._first = (self.order - 1)//2
         self._second = self._first+self.order
         self.total = 0
@@ -224,15 +231,13 @@ class FrequencyTrie(dict):
                 node = newnode
         return node
     
-    def count(self,ngram):
-        if len(ngram) == 0:
-            return self.total
-        elif len(ngram) > self.max_depth:
+    def count(self,ngram,distinct=False):
+        if len(ngram) > self.max_depth:
             raise IndexError("ngram of length {} exceeds max_depth of {}".format(len(ngram),self.max_depth))
-    
+        
         node = self._node(ngram)
         if node:
-            return node.total
+            return node.total if not distinct else (1 if type(node) is FrequencyTrieLeaf else node.distinct)
         else:
             return 0
     
@@ -258,7 +263,7 @@ class FrequencyTrie(dict):
         if n > self.max_depth:
             raise ArgumentError("trie of max_depth {} will not accomodate length-{} ngrams".format(self.max_depth,n))
         ngrams = ngramIter(tokens,n,start=start,end=end)
-        self.addNgrams(ngrams)
+        self.addMany(ngrams)
         
     def _add(self,ngram_counts):
         # this is assumed safe (every ngram of actual length self.max_depth)
@@ -289,6 +294,8 @@ class FrequencyTrie(dict):
                     #node = newnode
             if new:
                 node.incrementDistinct()
+            
+            self.total += count
     
     def incrementDistinct(self,count=1):
         self.distinct += count
@@ -298,21 +305,13 @@ class FrequencyTrie(dict):
     def backoff(self,ngram):
         return (self.parent if self.order < 0 else self.node(ngram[self._second::self.order]))
     
-    def contexts(self,token):
+    def contexts(self,ngram):
         if self.order < 0:
-            node = self.node((token,))
-            if node:
-                return node.distinct
-            else:
-                return 0
+            node = self.node(ngram)
+            return 0 if not node else node.distinct
         else:
-            count = 0
-            for leaf in self.nodes(self.max_depth - 1):
-                if token in leaf:
-                    count += 1
-                    
-            return count
-    
+            return sum(node._node(ngram) is not None for ng,node in self._nodes(self.max_depth - len(ngram)))
+            
     def nodes(self,depth):
         if depth > self.max_depth:
             raise AttributeError("no nodes of depth {} in trie of max_depth {}".format(depth,self.max_depth))
@@ -323,13 +322,13 @@ class FrequencyTrie(dict):
     def _nodes(self,depth,address=()):
         if depth == 1:
             for key,node in self.items():
-                yield (*address,key)[::self.order], node
+                yield (address+(key,))[::self.order], node
         else:
             for key,node in self.items():
-                subaddress = (*address,key)
+                subaddress = (address+(key,))
                 for ngram,node in node._nodes(depth-1,subaddress):
                     yield ngram, node
-        
+    
     def leaves(self):
         return self.nodes(self.max_depth)
     
@@ -345,6 +344,9 @@ class FrequencyTrie(dict):
         
         self._add(trie.ngramCounts())
         return self
+    
+    def __contains__(self,ngram):
+        return self._node(ngram) is not None
     
     def memSize(self):
         return getsize(self)

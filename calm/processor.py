@@ -3,6 +3,7 @@ import os
 import re
 from . import config_loader as cl
 from .objects import BagOfWords,BagOfNgrams
+from .utils import Memoized,MemoizedMethod,ngramIter,rollSum
 from itertools import chain
 from collections import deque
 #from nltk import tokenize as nltkTokenizers
@@ -69,6 +70,7 @@ class Processor:
     
     def __init__(self,configFile=None,stopwordsFile=None,bow_constructor=BagOfWords,**kwargs):
         self.bow_constructor = bow_constructor
+        self.__cache__ = dict() # for @MemoizedMethods
         
         # load the config file if specified
         if configFile:
@@ -112,6 +114,7 @@ class Processor:
         # add the ngram config params as class attributes
         self.ngramConfig = ngramDefaults
         self.__dict__.update(ngramDefaults)
+        self._ngramJoiner = ngramJoiner(self.joinChar)
         
                 
         self._stemmer = None
@@ -309,7 +312,7 @@ class Processor:
     def process(self,string,ngrams=False):
         if ngrams:
             return self.ngrams(string)
-        # every processing function in self._sequence will be applied in order 
+            # every processing function in self._sequence will be applied in order 
         # the the input and result of each intermediate step is a list
         if type(string) is str:
             tokens = [string]
@@ -325,8 +328,8 @@ class Processor:
     def bagOfWords(self,tokens,ngrams=False):
         bag = BagOfWords()
         # if the argument is a raw string rather than a list of tokens, tokenize it
-        if type(tokens) is str:
-            tokens = self.process(tokens,ngrams=ngrams)
+        #if type(tokens) is str:
+        #    tokens = self.process(tokens,ngrams=ngrams)
         bag.addMany(tokens)
         return bag
 
@@ -334,12 +337,50 @@ class Processor:
     def bagOfNgrams(self,tokens):
         bag = BagOfNgrams(max_n=self.n[-1],joinchar = self.joinChar)
         # if the argument is a raw string rather than a list of tokens, tokenize it
-        if type(tokens) is str:
-            tokens = self.process(tokens)
+        #if type(tokens) is str:
+        #    tokens = self.process(tokens)
         bag.addMany(self.ngrams(tokens))
         return bag
 
     
+    @MemoizedMethod
+    def _ngramConfig(self,max_n):
+        # Max allowable stopwords in the n-grams (may be adjusted later if self.maxNgramStopWordProportion is present)
+        if self.maxNgramStopwords is not None:
+            maxStopwords = self.maxNgramStopwords
+        else:
+            maxStopwords = max_n
+        if self.maxNgramStopwordProportion is not None:
+            maxStopwordProportion = self.maxNgramStopwordProportion
+        else:
+            maxStopwordProportion = 1.0
+
+        discardStops = (maxStopwords < max_n or maxStopwordProportion < 1.0) and self.stopwords is not None
+        beginStop = None
+        endStop = None
+        
+        pad = (1 if self.beginToken else 0) + (1 if self.endToken else 0)
+        
+        return (max_n,pad,maxStopwords,maxStopwordProportion,discardStops)
+    
+    
+    @MemoizedMethod
+    def _noStopNgramGen(self,*args):
+        n,max_n,maxStopwords,maxStopwordProportion = args
+        maxStops = min(maxStopwords,int(maxStopwordProportion*n))
+        
+        if maxStops >= n:
+            ngramGen = lambda tokens: (tup for tup in ngramIter(tokens,n))
+        else:
+            beginStop = (0 if self.beginToken else None)
+            endStop = (0 if self.endToken else None)
+        
+            ngramGen = lambda tokens,isStopword: (tup for tup,num_stop in zip(ngramIter(tokens,n,start=self.beginToken,end=self.endToken),
+                                                                          rollSum(isStopword, n, start=beginStop, end=endStop))
+                                                   if num_stop <= maxStops)
+        return ngramGen
+        
+        
     # take a string or a list of tokens (such as would be produced by self.process, and return a bag of words
     def ngrams(self,tokens,lengths=None):
         # PREPARATIONS
@@ -350,8 +391,8 @@ class Processor:
                 lengths = [int(lengths)]
         
         # if the argument is a raw string rather than a list of tokens, tokenize it
-        if type(tokens) is str:
-            tokens = self.process(tokens)
+        #if type(tokens) is str:
+        #    tokens = self.process(tokens)
         
         # only stem at this stage (as opposed to the processor stage) if specified
         if self.stemNgrams:
@@ -360,51 +401,27 @@ class Processor:
         # The greatest-length n-grams the tokens will accomodate:
         max_n = min(max(lengths),len(tokens))
         
-        # Max allowable stopwords in the n-grams (may be adjusted later if self.maxNgramStopWordProportion is present)
-        if self.maxNgramStopwords is not None:
-            maxStopwords = self.maxNgramStopwords
-        else:
-            maxStopwords = max_n
-
-        if self.maxNgramStopwordProportion is not None:
-            maxStopwordProportion = self.maxNgramStopwordProportion
-        else:
-            maxStopwordProportion = 1.0
-        
-        beginStop = None
-        endStop = None
+        max_n,pad,maxStopwords,maxStopwordProportion,discardStops = self._ngramConfig(max_n)
+                        
         # Only need to compute stopword occurrences once, and only if specified- a little more space but a lot less time.
-        if (maxStopwords < max_n or maxStopwordProportion < 1.0) and self.stopwords:
+        if discardStops:
             isStopword = [(1 if token in self.stopwords else 0) for token in tokens]
-            if self.beginToken:
-                beginStop = 0
-            if self.endToken:
-                endStop = 0
         
-        # update max_n in case start and end tokens were added
-        max_n = min(max(lengths),len(tokens) + (1 if self.beginToken else 0) + (1 if self.endToken else 0))
+        # update max_n in case start and end tokens will be added
+        max_n = min(max(lengths),len(tokens) + pad)
         
         # MAIN LOOP
         # Collect n-grams of all lengths in the list self.n
-        for n in lengths:
-            if n > max_n:
-                continue
-                
-            if self.stopwords and (maxStopwordProportion < 1.0 or maxStopwords < n):
-                maxStops = min(maxStopwords,int(maxStopwordProportion*n))
-                ngrams = (tup for tup,num_stop in zip(ngramIter(tokens,n,start=self.beginToken,end=self.endToken),
-                                                      rollSum(isStopword, n, start=beginStop, end=endStop))
-                                                      if num_stop <= maxStops)
+        if not discardStops:
+            if self.joinChar is None:
+                return chain.from_iterable((tup for tup in ngramIter(tokens,n)) for n in lengths)
             else:
-                ngrams = (tup for tup in ngramIter(tokens,n))
-            
-            # done with the main loop
-            # JOIN NGRAMS IF SPECIFIED
-            if self.joinChar:
-                ngrams = map(self.joinChar.join, ngrams)
-
-            for ngram in ngrams:
-                yield ngram
+                return map(self._ngramJoiner,chain.from_iterable((tup for tup in ngramIter(tokens,n)) for n in lengths))
+        else:
+            if self.joinChar is None:
+                return chain.from_iterable(self._noStopNgramGen(n,max_n,maxStopwords,maxStopwordProportion)(tokens,isStopword) for n in lengths)
+            else:
+                return map(self._ngramJoiner,chain.from_iterable(self._noStopNgramGen(n,max_n,maxStopwords,maxStopwordProportion)(tokens,isStopword) for n in lengths))
         
         
     def composeLeft(self,processor,args=None):
@@ -421,6 +438,7 @@ class Processor:
                 
         self._sequence = [(f,args)] + self._sequence
         
+        
     def composeRight(self,processor,args=None):
         """
         Append another tokenizer/processor to this one as an post-processing stage.
@@ -435,6 +453,7 @@ class Processor:
             args = ()
         self._sequence.append((processor,args))
         
+        
     def __add__(self,processor):
         p1 = Processor(**{k:value for k,value in self.__dict__.items() if not k.startswith('_') and k not in self.ngramConfig})
         # copying p2 ensures that mutation will not affect the composed processor
@@ -442,8 +461,19 @@ class Processor:
         p1.composeRight(p2.process)
         return p1
         
+        
     def __iadd__(self,processor):
         self.composeRight(processor.process)
+
+
+def ngramJoiner(joinchar=None):
+    if joinchar is None:
+        def joinNgram(tokens):
+            return tokens
+    else:
+        def joinNgram(tokens):
+            return joinchar.join(tokens)
+    return joinNgram
 
 
 def loadTokenizer(name,**kwargs):
@@ -476,54 +506,6 @@ def loadStopwords(stopwordsFile):
             for line in infile:
                 stopwords.add(line.strip())
     return stopwords
-
-
-def ngramIter(tokens,n,start=None,end=None,head=False):
-    ngram = deque()
-    tokens = iter(tokens)
-    i=1
-    if start:
-        i+=1
-        ngram.append(start)
-        if head:
-            yield tuple(ngram)
-    while i < n:
-        i+=1
-        ngram.append(next(tokens))
-        if head:
-            yield tuple(ngram)
-
-    for token in tokens:
-        ngram.append(token)
-        yield tuple(ngram)
-        ngram.popleft()
-    if end:
-        ngram.append(end)
-        yield tuple(ngram)
-        
-    
-def rollSum(indicators,n,start=None,end=None):
-    ngram = deque()
-    tokens = iter(indicators)
-    i=0
-    s = 0
-    if start is not None:
-        i+=1
-        ngram.append(start)
-        s += start
-    while i < n:
-        i+=1
-        t = next(tokens)
-        s += t
-        ngram.append(t)
-    yield s
-    for token in tokens:
-        ngram.append(token)
-        s += token
-        s -= ngram.popleft()
-        yield s
-    if end is not None:
-        yield s + end - ngram.popleft()
 
 
 

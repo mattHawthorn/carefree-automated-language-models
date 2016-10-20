@@ -6,21 +6,25 @@ import time
 from importlib import import_module
 
 
-legalConfigExtensions = ['.json','.yml','.py']
+legalConfigExtensions = ('.json','.yml','.py')
 
 # filter for comparing keywords
 spaces = re.compile('[-_\s]')
 
 # A handy arg parser allowing basic standard arguments: log directory,
 # config file or directory, and verbose flag
-basicParser = argparse.ArgumentParser(add_help=True)
 
-basicParser.add_argument('--config','--config-path',type=str,
-        metavar='CONFIG_PATH',help='path to configuration file or directory')
-basicParser.add_argument('--log',type=str,metavar='LOG_DIRECTORY',default='/tmp',
-        help='path to the directory where logs will be stored')
-basicParser.add_argument('-v','--verbose',action='store_true',
-        help='print verbose status messages?')
+def BasicParser():
+    basicParser = argparse.ArgumentParser(add_help=True)
+
+    basicParser.add_argument('--config','--config-path',type=str,
+            metavar='CONFIG_PATH',help='path to configuration file or directory')
+    basicParser.add_argument('--log',type=str,metavar='LOG_DIRECTORY',default='/tmp',
+            help='path to the directory where logs will be stored')
+    basicParser.add_argument('-v','--verbose',action='store_true',
+            help='print verbose status messages?')
+    
+    return basicParser
 
 
 class BasicLogger:
