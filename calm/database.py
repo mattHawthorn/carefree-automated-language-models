@@ -121,6 +121,19 @@ def insert_rows(cur,table,data,fields,how='replace'):
     how: a sqlite keyword specifying what to do on insert failure - one of ('replace','rollback','abort','fail','ignore')
       default is 'replace'.
     """
-    command = ("insert or {} into {} VALUES ("+','.join(["?"]*len(fields))+")").format(how,table)
+    command = ("insert or {} into {} ({}) VALUES ({})").format(how,table,','.join(fields),','.join(["?"]*len(fields)))
+    cur.executemany(command,data)
+
+
+def update_rows(cur,table,data,fields,how='replace'):
+    """
+    cur: a sqlite3 cursor object.
+    fields: the columns you're inserting data into
+    data: an iterable of tuples of length the number of columns inserting into, of types compatible with
+      the columns referred to by fields.
+    how: a sqlite keyword specifying what to do on insert failure - one of ('replace','rollback','abort','fail','ignore')
+      default is 'replace'.
+    """
+    command = ("update or {} {} SET ({}) = ({})").format(how,table,','.join(fields),','.join(["?"]*len(fields)))
     cur.executemany(command,data)
 

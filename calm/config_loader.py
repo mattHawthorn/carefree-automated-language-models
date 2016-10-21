@@ -128,7 +128,7 @@ def load_config(path, module_to_dict=True):
     return config
 
 
-def load_config_dir(directory,extensions=['.yml','.py','.json'],module_to_dict=True,force_dict=True):
+def load_config_dir(path,extensions=['.yml','.py','.json'],module_to_dict=True,force_dict=True):
     """
     if more than one file or force_dict==True, returns a dict 
         {config_file_basename:config_object(dict or list),...}
@@ -142,7 +142,7 @@ def load_config_dir(directory,extensions=['.yml','.py','.json'],module_to_dict=T
         config_files = [os.path.split(path)[-1]]
         path = os.path.split(path)[0]
 
-    config_files = [name for name in config_files if os.path.splitext(name)[-1] in config_extensions]
+    config_files = [name for name in config_files if os.path.splitext(name)[-1] in extensions]
 
     if len(config_files) > 1 or force_dict:
         config = dict()
