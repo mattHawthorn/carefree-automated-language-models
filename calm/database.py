@@ -76,7 +76,6 @@ def create_table(con,init_index=False,index_suffix='',**table_info):
     con is a sqlite3 database connection object
     init_index: boolean.  Create an index now if one is specified in table_info?
         it may be better to wait until the table is built, and then call init_index(con,**table_info)
-    if_exists: sqlite keyword- what to do if the table already exists. {'ignore','replace','rollback','abort','fail'}
     table_info can be passed as a dict of keyword args.
         Most robust method is to read this from a table config with read_table_config()
         Implicit keyword args are:
@@ -125,15 +124,32 @@ def insert_rows(cur,table,data,fields,how='replace'):
     cur.executemany(command,data)
 
 
-def update_rows(cur,table,data,fields,how='replace'):
+def update_rows(cur,table,data,fields,key,add_new=True):
     """
     cur: a sqlite3 cursor object.
     fields: the columns you're inserting data into
     data: an iterable of tuples of length the number of columns inserting into, of types compatible with
       the columns referred to by fields.
+    key: a column or list of columns (contained in fields) serving as a key for where to insert values.
     how: a sqlite keyword specifying what to do on insert failure - one of ('replace','rollback','abort','fail','ignore')
       default is 'replace'.
     """
-    command = ("update or {} {} SET ({}) = ({})").format(how,table,','.join(fields),','.join(["?"]*len(fields)))
-    cur.executemany(command,data)
-
+    if type(key) is str:
+        key = (key,)
+    field_set = set(fields)
+    if any(k not in field_set for k in key):
+        raise KeyError("keys must be in the table fields")
+    
+    key_indices = dict((k,i) for i,k in enumerate(fields) if k in key)
+    key_indices = tuple(key_indices[k] for k in key)
+    def get_keys(t):
+        return tuple(t[i] for i in key_indices)
+    
+    field_str = ', '.join("{}=?".format(f) for f in fields)
+    key_str = ', '.join("{}=?".format(k) for k in key)
+    
+    command = ("update {} SET {} where {}").format(table,field_str,key_str)
+    
+    if add_new:
+        database.insert_rows(cur,table,data,fields,how='ignore')
+    cur.executemany(command,(d+get_keys(d) for d in data))

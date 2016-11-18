@@ -14,7 +14,7 @@ class BagOfWords(dict):
     def __init__(self,tokens=None):
         self.total = 0
         if tokens:
-            [self._add(token) for token in tokens]
+            self._addmany(tokens)
 
     def add(self,token,count=1):
         if token not in self:
