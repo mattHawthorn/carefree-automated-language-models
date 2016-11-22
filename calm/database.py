@@ -151,5 +151,5 @@ def update_rows(cur,table,data,fields,key,add_new=True):
     command = ("update {} SET {} where {}").format(table,field_str,key_str)
     
     if add_new:
-        database.insert_rows(cur,table,data,fields,how='ignore')
+        insert_rows(cur,table,data,fields,how='ignore')
     cur.executemany(command,(d+get_keys(d) for d in data))
