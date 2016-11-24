@@ -59,6 +59,11 @@ class Document:
             return None
         return self.attributes[i]
     
+    def __setitem__(self,key,value):
+        self.keys = tuple(self.keys) + (key,)
+        self.attributes = tuple(self.attributes) + (value,)
+        self._len += 1
+    
     def items(self):
         return (tup for tup in zip(self.keys,self.attributes))
     
