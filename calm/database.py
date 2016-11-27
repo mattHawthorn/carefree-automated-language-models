@@ -3,6 +3,7 @@
 from .config_loader import load_config
 import os,sqlite3
 from functools import reduce
+from itertools import islice, count
 
 ####################################################
 ## sqlite helper functions
@@ -83,15 +84,38 @@ def create_table(con,init_index=False,index_suffix='',**table_info):
         - keys: list of field names to serve as the primary key
         - types: list of datatypes as strings
         - index: list of field names to be used optionally for creating an index for fast lookup
+    Create the table if it doesn't exist, with the specified schema.
+    If the table exists, update with new columns implied by the schema.
     """
     keys = table_info.get('keys',None)
-    schema = reduce(lambda l1,l2: l1 + l2, table_info['schema'], [])
+    schema = table_info['schema']
+    cols = dict(schema)
+    schemalist = reduce(lambda l1,l2: l1 + l2, schema, [])
     name = table_info['name']
-    command = ("create table if not exists {} (" + "{} {}, "*(len(schema)//2) + "PRIMARY KEY (" + ','.join(keys) + ") )").format(name,*schema)
+    
+    # create it
+    if keys is None:
+        command = "create table if not exists {} ({})".format(name, ", ".join(("{} {}",)*(len(schema)//2))).format(*schemalist)
+    else:
+        command = ("create table if not exists {} (" + "{} {}, "*(len(schema)//2) + "PRIMARY KEY (" + ','.join(keys) + ") )").format(name,*schemalist)
     cur = con.cursor()
     cur.execute(command)
     con.commit()
     cur.close()
+    
+    # update it
+    cur = con.execute('select * from {} limit 0'.format(name))
+    current_cols = set(desc[0] for desc in cur.description)
+    new_cols = set(cols).difference(current_cols)
+    # add new cols
+    if len(new_cols) > 0:
+        command = "alter table " + name + " add column {} {}"
+        cur = con.cursor()
+        for tup in schema:
+            if tup[0] in new_cols:
+                cur.execute(command.format(*tup))
+        con.commit()
+        cur.close()
     
     if init_index:
         if 'indices' not in table_info:
@@ -153,3 +177,49 @@ def update_rows(cur,table,data,fields,key,add_new=True):
     if add_new:
         insert_rows(cur,table,data,fields,how='ignore')
     cur.executemany(command,(d+get_keys(d) for d in data))
+
+
+class Grouped:
+    """
+    iterate over an iterable in small chunks
+    """
+    def __init__(self,iterable,size):
+        self.iterator = iter(iterable)
+        self.size = size
+    
+    def __next__(self):
+        slice = tuple(islice(self.iterator, self.size))
+        if len(slice) > 0:
+            return slice
+        else:
+            raise StopIteration
+    
+    def __iter__(self):
+        return self
+
+
+def update_rows_from_dicts_batched(con, table, key, data, batch_size = 100, max_batches = None, verbose = False):
+    """
+    take an iterator of dicts (data),
+    group into batches of specified size,
+    insert or update rows in the specified table using the specified key.
+    commit on every batch_size inserts.
+    """
+    if max_batches is None:
+        counter = count()
+    else:
+        counter = range(num_test_batches)
+        
+    for i,batch in zip(counter, Grouped(data, batch_size)):
+        cur = con.cursor()
+        for row in batch:
+            # this is a dict of column name: value
+            fields,values = zip(*row.items())
+            try:
+                update_rows(cur=cur, table=table, data=(values,), fields=fields, key=key, add_new=True)
+            except Exception as e:
+                if verbose:
+                    print("error {} while inserting values {} for columns {}\n".format(e, values, fields))
+        con.commit()
+        cur.close()
+
