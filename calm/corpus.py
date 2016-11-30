@@ -227,12 +227,42 @@ class BagOfWordsCorpus:
         self.docs[docID] = newDoc
         self.docCount += 1
     
-    def docIterWithID(self):
-        if type(self.docs) is list:
-            return enumerate(self.docs)
-        elif type(self.docs) is dict:
-            return self.docs.items()
+    def docIter(self, return_ids=False, transform=None):
+        class CorpusDocIter:
+            def __init__(self,corpus,return_ids=False, transform=None):
+                self.docs = corpus.docs
+                self.return_ids = return_ids
+                self.transform = transform
+                
+                if type(self.docs) is list:
+                    if return_ids:
+                        self.enumerator = lambda docs: enumerate(docs)
+                    else:
+                        self.enumerator = lambda docs: iter(docs)
+                elif type(self.docs) is dict:
+                    if return_ids:
+                        self.enumerator = lambda docs: iter(docs.items())
+                    else:
+                        self.enumerator = lambda docs: iter(docs.values())
 
+            def __iter__(self):
+                if self.transform is None:
+                    self.iterator = self.enumerator(self.docs)
+                else:
+                    if self.return_ids:
+                        self.iterator = map(lambda tup: (tup[0], self.transform(tup[1])), self.enumerator(self.docs))
+                    else:
+                        self.iterator = map(self.transform, self.enumerator(self.docs))
+                return self
+
+            def __next__(self):
+                try:
+                    return next(self.iterator)
+                except StopIteration:
+                    raise StopIteration
+                    
+        return CorpusDocIter(self, return_ids, transform)
+    
     def bagOfIDs(self,bagOfWords):
         # this returns a bag of IDs *only for ngrams/tokens in the dictionary*; no updates
         if not self.keepNgrams:
