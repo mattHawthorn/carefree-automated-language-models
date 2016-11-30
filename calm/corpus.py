@@ -226,6 +226,12 @@ class BagOfWordsCorpus:
         # and finally store the document record in the corpus
         self.docs[docID] = newDoc
         self.docCount += 1
+    
+    def docIterWithID(self):
+        if type(self.docs) is list:
+            return enumerate(self.docs)
+        elif type(self.docs) is dict:
+            return self.docs.items()
 
     def bagOfIDs(self,bagOfWords):
         # this returns a bag of IDs *only for ngrams/tokens in the dictionary*; no updates
