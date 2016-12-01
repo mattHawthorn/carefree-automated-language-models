@@ -91,7 +91,13 @@ class BagOfNgrams:
         self.joinchar = joinchar
         self._nfunc = (len if self.joinchar is None else joined_ngram_counter(joinchar))
         self.ngrams = tuple([()] + [BagOfWords() for i in range(max_n)])
-                
+        
+    def __copy__(self):
+        bag = BagOfNgrams(max_n=self.max_n,joinchar=self.joinchar)
+        bag.total = self.total
+        bag.ngrams = tuple(copy(bow) for bow in self.ngrams)
+        return bag
+    
     def __getitem__(self,ngram):
         try:
             return self.ngrams[self._nfunc(ngram)][ngram]

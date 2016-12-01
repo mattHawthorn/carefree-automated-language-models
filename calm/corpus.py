@@ -3,6 +3,7 @@ from .processor import Processor
 from .tfidf import *
 from .objects import *
 from .compression import *
+from copy import copy, deepcopy
 from numpy import array, uint32
 from .utils import getsize
 from operator import itemgetter
@@ -162,15 +163,18 @@ class BagOfWordsCorpus:
         self.compressTokens = compressTokens
         
         self.keepNgrams = keepNgrams
-        if keepNgrams and max(self.processor.n) > 1:
+        if keepNgrams:
+            if max(self.processor.n) <= 1:
+                print("Warning: max processor n is 1 but keepNgrams=True; only unigrams will be kept as singleton tuples")
             self._bowFunc = self.processor.bagOfNgrams
-        else:
-            if keepNgrams:
-                print("Warning: max processor n is 1 but keepNgrams=True; only unigrams will be kept")
-            def bowFunc(tokens):
-                return self.processor.bagOfWords(tokens,self.keepNgrams)
-            self._bowFunc = bowFunc
+            self.joinchar = self.processor.joinchar
             self.totalNgrams = tuple([0]*(max(self.processor.n) + 1))
+            if self.joinchar is None:
+                self._nfunc = lambda i: len(self.vocab.token[i])
+            else:
+                self._nfunc = lambda i: self.vocab.token[i].count(self.joinchar)
+        else:
+            self._bowFunc = self.processor.bagOfWords
             
         # Hashtable to keep track of TTF; initialize empty
         self.TTF = BagOfWords()
@@ -207,7 +211,7 @@ class BagOfWordsCorpus:
         newDoc.bagOfWords = bagOfIDs
         
         if self.keepNgrams:
-            for i,bag in enumerate(bagOfIDs):
+            for i,bag in enumerate(bagOfIDs.ngrams):
                 self.totalNgrams[i] += bag.total
         
         # store the tokens if specified; for training ngram models
@@ -270,10 +274,14 @@ class BagOfWordsCorpus:
             tokenCounts = ((self.vocab.ID[token],count) for token,count in bagOfWords.items() if token in self.vocab.ID)
             bagOfIDs._addmanyCounts(tokenCounts)
         else:
+            bagOfIDs = BagOfNgrams(max_n = bagOfWords.max_n, joinchar = None)
+            # this ensures the bagofngrams knows where to put incoming id's if any are ever added
+            bagOfIDs._nfunc = self._nfunc
             for i,bow in enumerate(bagOfWords.ngrams):
-                bow2 = {self.vocab.ID[ngram]:count for ngram,count in bow.items() if ngram in self.vocab.ID}
-                bagOfWords.ngrams[i] = bow2
-                bagOfIDs = bagOfWords
+                bow2 = BagOfWords()
+                bow2._addmanyCounts((self.vocab.ID[ngram], count) for ngram,count in bow.items() if ngram in self.vocab.ID)
+                bagOfIDs.ngrams[i] = bow2
+                bagOfIDs.total += bow2.total
         return bagOfIDs
         
     def getTokens(self,ids=None):
@@ -303,15 +311,15 @@ class BagOfWordsCorpus:
     def tfidf(self,docID,normalize=True):
         return tfidfVector(self[docID].bagOfWords,DF=self.DF,docCount=self.docCount,dfweighting=IDF,tfweighting = None,normalize=normalize)
     
-    def cosine(self,docID,bagOfIDs):
+    def cosine(self, docID, bagOfIDs, dfweighting=IDF, tfweighting=sublinearTF):
         vector = self[docID].bagOfWords
         
         return cosineSimilarity(vector, bagOfIDs, DF=self.DF, docCount=self.docCount,
-                                dfweighting=IDF, tfweighting=sublinearTF)
+                                dfweighting=dfweighting, tfweighting=tfweighting)
     
-    def query(self,string,n):
+    def query(self, string, n, dfweighting=IDF, tfweighting=sublinearTF):
         bagOfIDs = self.bagOfIDs(self.processor.bagOfWords(string))
-        sims = [(docID, self.cosine(docID,bagOfIDs)) for docID in self.docs]
+        sims = [(docID, self.cosine(docID,bagOfIDs,dfweighting,tfweighting)) for docID in self.docs]
         sims = sorted(sims, key=itemgetter(1),reverse=True)
         return sims[0:n]
     
@@ -357,6 +365,12 @@ class BagOfWordsCorpus:
             sorted_bow = sorted(bow.items(), key=itemgetter(1), reverse=reverse)
             tokens = [self.vocab.token[ID] for ID,count in sorted_bow[0:number]]
         return tokens
+    
+    def reduceTokenIDs(self):
+        tokens, oldIDs = tuple(zip(*self.vocab.ID.items()))
+        newOrder = sorted(self.TTF.items(), key=itemgetter(1), reverse=True)
+        translator = {j:i  for i,(j,count) in enumerate(newOrder)}
+        
         
     def removeTerms(self,terms,docs=True):
         """remove an iterable of ngrams/tokens from the corpus, including each document's bagOfWords if indicated"""
