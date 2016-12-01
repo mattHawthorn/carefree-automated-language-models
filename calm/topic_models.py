@@ -157,3 +157,4 @@ class GensimLDAModel(TopicModelWrapper):
         
         self.alpha = self._model.alpha
         self.eta = self._model.eta
+
