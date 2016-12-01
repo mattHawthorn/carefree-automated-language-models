@@ -129,7 +129,8 @@ class TopicModelWrapper:
 class GensimLDAModel(TopicModelWrapper):
     def __init__(self, **params):
         try:
-            from gensim.models import LdaModel, LdaMulticore
+            from gensim.models import LdaModel
+            self._implementation = LdaModel
         except ImportError:
             raise ImportError("gensim is not installed or gensim.models.LdaModel is unavailable.")
         
@@ -153,7 +154,8 @@ class GensimLDAModel(TopicModelWrapper):
                      iterations=self.num_iter)
         #print("call is LdaModel({})".format(", ".join("{}={}".format(*tup) for tup in kwargs.items() if tup[0] != 'id2word')))
         
-        self._model = LdaModel(**kwargs)
+        # the implementation here is the gensim LDA model class
+        self._model = self._implementation(**kwargs)
         
         self.alpha = self._model.alpha
         self.eta = self._model.eta
