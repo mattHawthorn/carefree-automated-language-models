@@ -63,12 +63,30 @@ class TokenTimeSeriesAnalyzer:
         plt.show()
 
 
-def yearBinned(dt):
-    return datetime(dt.year, 1, 1)
+def monthDT(dt):
+    month = dt.month
+    year = dt.year
+    return datetime(year,month,1)
 
-def monthBinned(dt):
-    return datetime(dt.year, dt.month, 1)
+def yearDT(dt):
+    year = dt.year
+    return datetime(year,1,1)
 
-def dayBinned(dt):
-    return datetime(dt.year, dt.month, dt.day)
+def dayDT(dt):
+    month = dt.month
+    year = dt.year
+    day = dt.day
+    return datetime(year,month,day)
+
+def groupByNumDays(dt, num_days=7):
+    chunks = (dt - EPOCH).days//num_days
+    return EPOCH + timedelta(days=chunks*num_days)
+    
+def groupByYearFraction(dt, num_per_year = 52):
+    year = dt.year
+    year_start = datetime(year)
+    year_end = datetime(year + 1)
+    chunk = (year_end - year_start)/num_per_year
+    delta = dt - year_start
+    return year_start + (delta//chunk)*chunk
 
