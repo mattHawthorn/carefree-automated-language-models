@@ -369,16 +369,19 @@ class BagOfWordsCorpus:
             tokens = [self.vocab.token[ID] for ID,count in sorted_bow[0:number]]
         return tokens
     
-    def removeTerms(self,terms,docs=True,vocab=False):
+    def removeTerms(self,terms,docs=True,vocab=False,reduce_ids=False):
         """remove an iterable of ngrams/tokens from the corpus, including each document's bagOfWords if indicated"""
         # get the ngram IDS from the vocab for dropping them in all the other structures
         terms = set(terms)
         ngramIDs = [self.vocab.ID[term] for term in terms if term in self.vocab.ID]
         
         if vocab:
-            self.vocab.dropMany(terms)
-            self.DF.dropMany(ngramIDs)
-            self.TTF.dropMany(ngramIDs)
+            if self.keepTokens:
+                print("warning: cannot remove terms from the vocab if token sequences are kept (self.keepTokens==True). skipping.")
+            else:            
+                self.vocab.dropMany(terms)
+                self.DF.dropMany(ngramIDs)
+                self.TTF.dropMany(ngramIDs)
         
         if docs:
             if type(self.docs) is list:
@@ -388,6 +391,9 @@ class BagOfWordsCorpus:
             for key in keys:
                 delkeys = set(self.docs[key].bagOfWords).difference(self.vocab.token)
                 self.docs[key].bagOfWords.dropMany(delkeys)
+        
+        if reduce_ids:
+            self.reduceTokenIDs()
     
     def reduceTokenIDs(self):
         """
