@@ -369,12 +369,6 @@ class BagOfWordsCorpus:
             tokens = [self.vocab.token[ID] for ID,count in sorted_bow[0:number]]
         return tokens
     
-    def reduceTokenIDs(self):
-        tokens, oldIDs = tuple(zip(*self.vocab.ID.items()))
-        newOrder = sorted(self.TTF.items(), key=itemgetter(1), reverse=True)
-        translator = {j:i  for i,(j,count) in enumerate(newOrder)}
-        
-        
     def removeTerms(self,terms,docs=True,vocab=False):
         """remove an iterable of ngrams/tokens from the corpus, including each document's bagOfWords if indicated"""
         # get the ngram IDS from the vocab for dropping them in all the other structures
@@ -411,8 +405,10 @@ class BagOfWordsCorpus:
         newVocab.addMany(oldVocab.token[i] for i,count in newOrder)
         
         oldToNew = {i:newVocab.ID[token] for i,token in oldVocab.token.items()}
-        newTTF = {oldToNew[i]:count for i,count in oldTTF.items()}
-        newDF = {oldToNew[i]:count for i,count in oldDF.items()}
+        newTTF = BagOfWords()
+        newTTF._addmanyCounts((oldToNew[i], count) for i,count in oldTTF.items())
+        newDF = BagOfWords()
+        newDF._addmanyCounts((oldToNew[i], count) for i,count in oldDF.items())
         
         self.TTF = newTTF
         self.DF = newDF
