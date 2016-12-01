@@ -106,14 +106,14 @@ class TokenTimeSeriesAnalyzer:
             return ((),())
         
     def compareTokens(self, tokens, converter="default", 
-                      normalize=True, min_time=None, max_time=None, title=None, labels=None, colors=defaultcolors):
+                      normalize=True, min_time=None, max_time=None, title=None, labels=None, colors=defaultcolors, show=False):
         if labels is None:
             labels = tokens
             
         series_iter = (self.series(token, converter=converter, 
                                    normalize=normalize, 
                                    min_time=min_time, max_time=max_time) for token in tokens)
-        self.compareSeries(series=series_iter, labels=labels, title=title, colors=colors)
+        self.compareSeries(series=series_iter, labels=labels, title=title, colors=colors, show=show)
 
     def compareSeries(self, series, labels=None, title=None, colors=defaultcolors, show=False):
         if labels is None:
