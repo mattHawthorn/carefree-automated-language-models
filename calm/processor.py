@@ -269,43 +269,43 @@ class Processor:
 
     # private functions for the heavy-lifting tasks behind the scenes
     def replace(self,strings,*args):
-        return [re.sub(args[0],args[1],s) for s in strings]
+        return (re.sub(args[0],args[1],s) for s in strings)
 
     def split(self,strings,*args):
         return list(filter(lambda s: s is not None,chain.from_iterable([re.split(args[0],s) for s in strings])))
         
     def strip(self,strings,*args):
-        return [s.strip(args[0]) for s in strings]
+        return (s.strip(args[0]) for s in strings)
 
     def filter(self,strings,*args):
         p = args[0] # the regex pattern
         match = args[1] # the matching function
         if args[2]: # discard/retain
-            return [s for s in strings if not match(p,s)]
+            return (s for s in strings if not match(p,s))
         else:
-            return [s for s in strings if match(p,s)]
+            return (s for s in strings if match(p,s))
 
     def case(self,strings,*args):
         f = args[0] # the case function
-        return [f(s) for s in strings]
+        return (f(s) for s in strings)
 
     def caseMatched(self,strings,*args):
         f = args[0] # the case function
         p = args[1] # the regex pattern
         match=args[2] # the matching function
         if args[3]: # only/except
-            return [f(s) if not match(p,s) else s for s in strings]
+            return (f(s) if not match(p,s) else s for s in strings)
         else:
-            return [f(s) if match(p,s) else s for s in strings]
+            return (f(s) if match(p,s) else s for s in strings)
 
     def removeStopwords(self,strings):
-        return [s for s in strings if s not in self.stopwords]
+        return (s for s in strings if s not in self.stopwords)
 
     def stem(self,strings):
-        return [self._stem(s) for s in strings]
+        return (self._stem(s) for s in strings)
 
     def tokenize(self,strings):
-        return list(chain.from_iterable([self._tokenize(s) for s in strings]))
+        return chain.from_iterable((self._tokenize(s) for s in strings))
 
 
     # the main processing function: take a doc as a string and return a list of tokens
@@ -323,6 +323,8 @@ class Processor:
             tokens = f(tokens,*args)
         
         return [t for t in tokens if t!='']
+    
+    __call__ = process
 
     
     def bagOfWords(self,tokens,ngrams=False):
@@ -412,6 +414,7 @@ class Processor:
         
         # MAIN LOOP
         # Collect n-grams of all lengths in the list self.n
+        # return types are consumable iterators/maps rather than lists since these could become large
         if not discardStops:
             if self.joinChar is None:
                 return chain.from_iterable((tup for tup in ngramIter(tokens,n)) for n in lengths)
@@ -427,16 +430,14 @@ class Processor:
     def composeLeft(self,processor,args=None):
         """
         Prepend another tokenizer/processor to this one as an initial processing stage.
-        processor: any function which takes optionally a string or an iterable of strings and returns a string or an iterable of strings.
+        processor: any function which takes optionally a string or an iterable of strings and returns an iterable of strings.
                    if you desire to compose a calm.processor.Processor P, then pass in P.process for 'processor'
         args: optionally, pass in a tuple of fixed args to be passed to 'processor'
         """
         if args is None:
-            f = lambda s,args: processor(s)
-        else:
-            f = lambda s,args: processor(s,args)
-                
-        self._sequence = [(f,args)] + self._sequence
+            args = ()
+        self._sequence = [(processor,args)] + self._sequence
+        self.sequence = [dict(op=processor, args=args)] + self.sequence
         
         
     def composeRight(self,processor,args=None):
@@ -452,6 +453,7 @@ class Processor:
         if args is None:
             args = ()
         self._sequence.append((processor,args))
+        self.sequence.append(dict(op=processor, args=args))
         
         
     def __add__(self,processor):
