@@ -359,9 +359,10 @@ class FrequencyTrie(dict):
     
 
 class FrequencyTrieLeaf:
-    __slots__=('total','parent','max_depth')
+    __slots__=('total','parent','max_depth','distinct')
     def __init__(self,parent=None):
         self.total = 0
+        self.distinct = 1
         self.max_depth = 0
         self.parent = parent
         
