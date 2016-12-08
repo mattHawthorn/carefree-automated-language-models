@@ -43,7 +43,6 @@ class Document:
             except:
                 attributes.append(None)
         
-        self._len = len(docAttributes)
         # we assign the passed in keys directly; these are then shared in memory across a corpus
         self.keys = docAttributes
         self.attributes = tuple(attributes)
@@ -52,19 +51,29 @@ class Document:
     # this allows for dict-like access to corpus-specific features in addition to dot notation for the
     # standard features (BOW, text, ID, tokens)
     def __getitem__(self,key):
-        i = 0
-        for k in self.keys:
-            if k == key:
-                break
-            i += 1
-        if i == self._len:
+        try:
+            idx = self.keys.index(key)
+        except:
             return None
-        return self.attributes[i]
+        if idx < len(self.attributes):
+            return self.attributes[idx]
+        else:
+            return None
     
     def __setitem__(self,key,value):
-        self.keys = tuple(self.keys) + (key,)
-        self.attributes = tuple(self.attributes) + (value,)
-        self._len += 1
+        try:
+            idx = self.keys.index(key)
+        except:
+            idx = len(self.keys)
+            self.attributes = tuple(self.attributes) + (None,)*(len(self.keys) - len(self.attributes)) + (value,)
+            try:
+                self.keys.append(key)
+            except:
+                self.keys = tuple(self.keys) + (key,)
+        else:
+            attrs = list(self.attributes)
+            attrs[idx] = value
+            self.attributes = tuple(attrs)
     
     def items(self):
         return (tup for tup in zip(self.keys,self.attributes))
@@ -287,8 +296,12 @@ class BagOfWordsCorpus:
                 bagOfIDs.total += bow2.total
         return bagOfIDs
         
-    def getTokens(self,ids=None):
-        return [self.vocab.token[i] for i in map(int,ids)]
+    def getTokens(self,ids=None,filter_missing=True):
+        id_to_token = self.vocab.token
+        if filter_missing:
+            return [id_to_token[i] for i in map(int,ids) if i in id_to_token]
+        else:
+            return [id_to_token.get(i,None) for i in map(int,ids)]
         
     def getIDs(self,tokens):
         return array([self.vocab.ID[token] for token in tokens], dtype=uint32)
@@ -377,11 +390,10 @@ class BagOfWordsCorpus:
         
         if vocab:
             if self.keepTokens:
-                print("warning: cannot remove terms from the vocab if token sequences are kept (self.keepTokens==True). skipping.")
-            else:            
-                self.vocab.dropMany(terms)
-                self.DF.dropMany(ngramIDs)
-                self.TTF.dropMany(ngramIDs)
+                print("warning: removal of terms from the vocab while token sequences are kept (self.keepTokens==True).")
+            self.vocab.dropMany(terms)
+            self.DF.dropMany(ngramIDs)
+            self.TTF.dropMany(ngramIDs)
         
         if docs:
             if type(self.docs) is list:
