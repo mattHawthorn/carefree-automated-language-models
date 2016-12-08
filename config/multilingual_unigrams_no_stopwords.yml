@@ -1,0 +1,48 @@
+---
+sequence:
+    - op: lower
+    - op: replace
+      args:
+          pattern: "\\s+[0-9]{4}('s\\s|\\s+)"
+          repl: ' _year_ '
+
+    # floating point and ints
+    - op: replace
+      args:
+          pattern: '[0-9]+\.?[0-9]*'
+          repl: ' _num_ '
+    # percent
+    - op: replace
+      args:
+          pattern: '_num_[\s]*?%'
+          repl: ' _percent_ '
+    # cash
+    - op: replace
+      args:
+          pattern: '([$\u00a3\u00a5\u20a0-\u20be])[\s]*_num_'
+          repl: ' _\1_ '
+    # remove single quotes that aren't apostrophes
+    - op: replace
+      args:
+          pattern: "'*\\s+'*"
+          repl: ' '
+    # all remaining unwanted chars; all but alpha, arabic, cyrillic, extended latin
+    # python's word escape gets all these
+    - op: replace
+      args:
+          # anything that's not a word char, single quote, underscore, or currency character
+          pattern: "[^'_\\w$\\u00a3\\u00a5\\u20a0-\\u20be]+"
+          repl: ' '
+    # tokenize on whitespace
+    - op: split
+      args: 
+          pattern: '\s+'
+    # repreated characters reduce to 2
+    - op: replace
+      args:
+          pattern: '(.)\1{2,}'
+          repl: '\1\1'    
+
+stopwords:
+    english.stop
+...
