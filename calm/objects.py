@@ -91,7 +91,13 @@ class BagOfNgrams:
         self.joinchar = joinchar
         self._nfunc = (len if self.joinchar is None else joined_ngram_counter(joinchar))
         self.ngrams = tuple([()] + [BagOfWords() for i in range(max_n)])
-                
+        
+    def __copy__(self):
+        bag = BagOfNgrams(max_n=self.max_n,joinchar=self.joinchar)
+        bag.total = self.total
+        bag.ngrams = tuple(copy(bow) for bow in self.ngrams)
+        return bag
+    
     def __getitem__(self,ngram):
         try:
             return self.ngrams[self._nfunc(ngram)][ngram]
@@ -353,9 +359,10 @@ class FrequencyTrie(dict):
     
 
 class FrequencyTrieLeaf:
-    __slots__=('total','parent','max_depth')
+    __slots__=('total','parent','max_depth','distinct')
     def __init__(self,parent=None):
         self.total = 0
+        self.distinct = 1
         self.max_depth = 0
         self.parent = parent
         
