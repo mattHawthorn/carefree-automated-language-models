@@ -31,11 +31,6 @@ class BasicLogger:
     def __init__(self,logDir=None,name=__name__,date_format="%Y-%m-%d_%H:%M",level='INFO',print_to_screen=True):
         self.log = logging.getLogger(name)
         self.log.setLevel(logging.__dict__[level])
-        self.error = self.log.error
-        self.exception = self.log.exception
-        self.warn = self.log.warn
-        self.info = self.log.info
-        self.debug = self.log.debug
         
         if logDir is not None:
             self.log_path = os.path.join(logDir,name+"_"+time.strftime(date_format)+'.log')
@@ -50,6 +45,13 @@ class BasicLogger:
             printer.setLevel(logging.__dict__[level])
             printer.setFormatter(formatter)
             self.log.addHandler(printer)
+            
+        self.error = self.log.error
+        self.exception = self.log.exception
+        self.warn = self.log.warn
+        self.info = self.log.info
+        self.debug = self.log.debug
+        
 
 
 def get_name(synonym,thesaurus,remove=spaces):
