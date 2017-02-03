@@ -1,6 +1,6 @@
 #coding:utf-8
 
-from numpy import where, sort, cumsum, argsort, array, bincount, full, log2, outer
+from numpy import where, sort, cumsum, argsort, array, bincount, full, log2, outer, searchsorted
 
 def head(dist, p=1.0, n=None, eps=None):
     """
