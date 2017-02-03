@@ -34,6 +34,9 @@ class BagOfWords(dict):
         # it need not be a BagOfWords object.
         # Use count = 1 for a DF dictionary
         self._addmanyCounts(bagOfWords.items())
+
+    def subtractBagOfWords(self,bagOfWords):
+        self._subtractmanyCounts(bagOfWords.items())
     
     def _addmany(self,tokens):
         total = 0
@@ -53,19 +56,45 @@ class BagOfWords(dict):
                 self[token] += count
             self.total += count
     
+    def _subtractmanyCounts(self,tokencounts, decrement=True):
+        drops = []
+        for token,count in tokencounts:
+            if token in self:
+                cur_count = self[token]
+                sub_count = min(cur_count, count)                
+                cur_count -= sub_count
+                if cur_count == 0:
+                    drops.append(token)
+                else:
+                    self[token] = cur_count
+                    self.total -= sub_count
+        for token in drops:
+            self.drop(token, decrement)
+    
     def __iadd__(self,other):
         # enable use of self += BagOfWords (or BagOfNgrams)
         self._addmanyCounts(other.items())
+    
+    def __isub__(self,other):
+        # enable use of self += BagOfWords (or BagOfNgrams)
+        self._subtractmanyCounts(other.items())
             
-    def drop(self,token):
-        if token in self:
-            del self[token]
-
-    def dropMany(self,tokens):
-        # else a list or other iterable of ngrmas/tokens
-        for token in tokens:
+    def drop(self,token,decrement=False):
+        if not decrement:
             if token in self:
                 del self[token]
+        else:
+            if token in self:
+                count = self.pop(token)
+                self.total -= count
+
+    def dropMany(self,tokens,decrement=False):
+        # else a list or other iterable of ngrmas/tokens
+        for token in tokens:
+            self.drop(token,decrement)
+    
+    addManyCounts = _addmanyCounts
+    subtractManyCounts = _subtractmanyCounts
 
 
 class MultiSet(BagOfWords):
@@ -177,7 +206,11 @@ class BagOfNgrams:
     def __iadd__(self,other):
         # enable use of self += BagOfWords (or BagOfNgrams)
         self._addmanyCounts(other.items())
-            
+    
+    def __isub__(self,other):
+        # enable use of self += BagOfWords (or BagOfNgrams)
+        self._addmanyCounts((k, -v) for k, v in other.items())
+
     def drop(self,ngram):
         if ngram in self:
             del self.ngrams[self._nfunc(ngram)][ngram]
@@ -192,6 +225,8 @@ class BagOfNgrams:
         
     def totalNgrams(self,n):
         return self.ngrams[n].total
+    
+    addManyCounts = _addmanyCounts
 
 
 
@@ -258,6 +293,8 @@ class FrequencyTrie(dict):
     def addMany(self,ngrams,counts=repeat(1)):
         # warning: no length check is performed here!
         self._add(zip(ngrams,counts))
+    
+    addManyCounts = _add
     
     def addBagOfNgrams(self,bag):
         # warning: no check is done here!
