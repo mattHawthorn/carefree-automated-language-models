@@ -294,8 +294,6 @@ class FrequencyTrie(dict):
         # warning: no length check is performed here!
         self._add(zip(ngrams,counts))
     
-    addManyCounts = _add
-    
     def addBagOfNgrams(self,bag):
         # warning: no check is done here!
         self._add(bag.items())
@@ -339,6 +337,8 @@ class FrequencyTrie(dict):
                 node.incrementDistinct()
             
             self.total += count
+    
+    addManyCounts = _add
     
     def incrementDistinct(self,count=1):
         self.distinct += count
