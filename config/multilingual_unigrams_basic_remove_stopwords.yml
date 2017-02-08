@@ -1,0 +1,27 @@
+---
+sequence:
+    # expand punctuation
+    - op: replace
+      args:
+          pattern: '[^\w]'
+          repl: ' '
+    # substitute numerics with #
+    - op: replace
+      args:
+          pattern: "[0-9]"
+          repl: '#'
+    - op: split
+      args: 
+          pattern: '\s+'
+    # remove stopwords from a set of languages. note, no care is taken to detect language
+    - op: stopwords
+      args:
+          files:
+              - english.stop
+              - spanish.stop
+              - french.stop
+              - arabic.stop
+          words:
+              - _num_
+              - _percent_
+...

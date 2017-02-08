@@ -1,0 +1,16 @@
+---
+sequence:
+    # expand punctuation
+    - op: replace
+      args:
+          pattern: '[^\w]'
+          repl: ' '
+    # substitute numerics with #
+    - op: replace
+      args:
+          pattern: "[0-9]"
+          repl: '#'
+    - op: split
+      args: 
+          pattern: '\s+'
+...

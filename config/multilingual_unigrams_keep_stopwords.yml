@@ -19,17 +19,19 @@ sequence:
     # cash
     - op: replace
       args:
-          pattern: '\$[\s]*_num_'
-          repl: ' _currency_ '
+          pattern: '([$\u00a3\u00a5\u20a0-\u20be])[\s]*_num_'
+          repl: ' _\1_ '
     # remove single quotes that aren't apostrophes
     - op: replace
       args:
           pattern: "'*\\s+'*"
           repl: ' '
-    # all remaining unwanted chars
+    # all remaining unwanted chars; all but alpha, arabic, cyrillic, extended latin
+    # python's word escape gets all these
     - op: replace
       args:
-          pattern: "[^'a-zA-Z_]"
+          # anything that's not a word char, single quote, underscore, or currency character
+          pattern: "[^'_\\w$\\u00a3\\u00a5\\u20a0-\\u20be]+"
           repl: ' '
     # tokenize on whitespace
     - op: split
