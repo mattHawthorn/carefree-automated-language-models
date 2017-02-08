@@ -36,6 +36,17 @@ class Processor:
                 Of course, certain combinations will result in an less efficent processor, since checks will be performed on both
                 parameters. E.g. with maxStopwords=1 and maxStopwordProportion=.5 and n=2, there is some redundancy; the proportion
                 could be omitted.
+        stopwords: Either:
+                1. A dict specifying one or both of: 1. a file or list of files containing stopwords, 2. an list of words to include.
+                    ex: {'file':['foo.stop', 'bar.stop'], 'list':["dog","cat"]}
+                   These are agglomerated into one global stoplist which is the default stoword set used by the 'stopwords' operation if
+                   no stopwords are specified there. 
+                2. A single string, which is assumed to be a local filepath with root the dir of the config file.
+                3. A list of strings, which are assumed to be a list of stopwords.
+        stemmer: A dict specifying a stemmer from the nltk stemmer module. Ex:
+                {"name":"SnowballStemmer","kwargs":{"language":"english"}}
+        tokenizer: A dict specifying a tokenizer from the nltk tokenizer module. Ex:
+                {"name":"RegexpTokenizer","kwargs":{"pattern":"\\s+","gaps":true,"discard_empty":true}
                 
     Possible operations included in the above sequence, together with their result and specification are as follows:
         replace: apply re.sub() to replace a regex with a string. Ex.: 
@@ -68,12 +79,13 @@ class Processor:
                 {"operation":"stem","args":{"name":"SnowballStemmer","kwargs":{"language":"english"}}}
     """
     
-    def __init__(self,configFile=None,stopwordsFile=None,bow_constructor=BagOfWords,**kwargs):
+    def __init__(self,configFile=None,stopwordsFiles=None,bow_constructor=BagOfWords,**kwargs):
         self.bow_constructor = bow_constructor
         self.__cache__ = dict() # for @MemoizedMethods
         
         # load the config file if specified
         if configFile:
+            configDir = os.path.join(*os.path.split(configFile)[:-1])
             config = cl.load_config(configFile)
 
             if kwargs:
@@ -133,26 +145,27 @@ class Processor:
         
         # read stopwords from a text file or directly as a list or set
         self.stopwords = None
-        if stopwordsFile:
+        if stopwordsFiles:
             if 'stopwords' in kwargs:
                 print("Warning: stopwords were specified in both the config file and the init args; "+
                       "defaulting to the init args stopwords: {}".format(stopwordsFile))
-            self.stopwords = set(loadStopwords(stopwordsFile))
+            self.stopwords = set(loadStopwords(files=stopwordsFiles, configDir=configDir))
         elif 'stopwords' in kwargs:
-            if kwargs['stopwords'] is not None:
-                if type(kwargs['stopwords']) is str:
-                    stopwordsFile = kwargs['stopwords']
-                    stopDir = os.path.split(stopwordsFile)[0]
-                    if len(stopDir) == 0:
-                        stopDir = os.path.split(configFile)[0]
-                        stopwordsFile = os.path.join(stopDir,kwargs['stopwords'])
-                    self.stopwords = set(loadStopwords(stopwordsFile))
-                elif type(kwargs['stopwords']) not in [set,list,tuple]:
-                    raise ValueError("Stopwords must be given as a filename or a list-like"+
-                                     " object in the config, not {}".format(type(kwargs['stopwords'])))
+            stopconfig = kwargs['stopwords']
+            if stopconfig is not None:
+                if type(stopconfig) is str:
+                    self.stopwords = set(loadStopwords(files=(stopconfig,), configDir=configDir))
+                elif type(stopconfig) in [set,list,tuple]:
+                    self.stopwords = set(stopconfig)
+                elif type(stopconfig) is dict:
+                    # assume a dict of the form passed to the stopwords op
+                    stopconfig = cl.clean_args(stopconfig, argThesauri['stopwords'])
+                    self.stopwords = set(loadStopwords(configDir=configDir, **stopconfig))
                 else:
-                    self.stopwords = set(kwargs['stopwords'])
-        
+                    raise ValueError("Stopwords must be given as a filename, a list-like of strings, or a dict"+
+                                     " object with 'files' and/or 'words' in the config, not {}".format(type(kwargs['stopwords'])))
+
+        self.localStopwords = None
         # initialize the list of processing steps
         self._sequence = list()
         # track the config
@@ -160,10 +173,10 @@ class Processor:
         
         # for all operations in the processing sequence, define functions and append to the sequence
         for op in sequence:
-            self.appendOp(op)
+            self.appendOp(op,configDir)
         
         
-    def appendOp(self,op):
+    def appendOp(self,op,configDir):
         # standardize the operation,args keywords for the operation
         op = cl.clean_args(op,opThesaurus,remove=spaces)
         # get the standard name for the operation
@@ -230,11 +243,23 @@ class Processor:
                 f = self.caseMatched
 
         elif operation=='stopwords':
-            if not self.stopwords:
-                print("Warning: stopword removal is indicated, but no stopwords are specified")
+            if params is None:
+                if not self.stopwords:
+                    print("Warning: stopword removal is indicated, but no stopwords are specified either globally or locally for the operation")
+                    stopwords = set()
+                else:
+                    stopwords = self.stopwords
+            else:
+                stopwords = set(loadStopwords(configDir=configDir, **params))
+            
             if max(self.n) > 1:
                 print("Warning: stopword removal is inidicated prior to ngram collection; ngrams will not reflect actual proximity.")
-            args = ()
+            
+            if self.localStopwords is None:
+                self.localStopwords = [stopwords]
+            else:
+                self.localStopwords.append(stopwords)
+            args = (stopwords,)
             f = self.removeStopwords
 
         elif operation=='tokenize':
@@ -298,8 +323,9 @@ class Processor:
         else:
             return (f(s) if match(p,s) else s for s in strings)
 
-    def removeStopwords(self,strings):
-        return (s for s in strings if s not in self.stopwords)
+    def removeStopwords(self,strings,*args):
+        stopwords = args[0]
+        return (s for s in strings if s not in stopwords)
 
     def stem(self,strings):
         return (self._stem(s) for s in strings)
@@ -499,15 +525,25 @@ def loadStemmer(name,**kwargs):
     return stemmer
         
 
-def loadStopwords(stopwordsFile):
-    if os.path.splitext(stopwordsFile)[1] in cl.legalConfigExtensions:
-        stopwords = set(cl.load_config(stopwordsFile))
-    else:
-        stopwords = set()
-        with open(stopwordsFile,'r') as infile:
-            for line in infile:
-                stopwords.add(line.strip())
-    return stopwords
+def loadStopwords(files=None, words=None, configDir=None):
+    all_stopwords = set()
+    if files is not None:
+        if type(files) is str:
+            files = (files,)
+        for stopwordsFile in files:
+            if configDir is not None and os.path.abspath(stopwordsFile) != stopwordsFile:
+                stopwordsFile = os.path.join(configDir, stopwordsFile)
+            if os.path.splitext(stopwordsFile)[1] in cl.legalConfigExtensions:
+                stopwords = set(cl.load_config(stopwordsFile))
+            else:
+                stopwords = set()
+                with open(stopwordsFile,'r') as infile:
+                    for line in infile:
+                        stopwords.add(line.strip())
+            all_stopwords = all_stopwords.union(stopwords)
+    if words is not None:
+        all_stopwords = all_stopwords.union(words)
+    return all_stopwords
 
 
 
@@ -581,8 +617,8 @@ argThesauri = {"replace":{"pattern":patternSynonyms,
                "retain":filterThesaurus,
                "lower":caseThesaurus,
                "upper":caseThesaurus,
-               "stopwords":{"file":{"file","filename","path","stopwordsfile"},
-                            "list":{"list","stopwords","stopwordslist"}
+               "stopwords":{"files":{"file","filename","path","stopwordsfile","files","paths","filenames", "stopwordsfiles"},
+                            "words":{"list","stopwords","stopwordslist","stoplist","words"}
                             },
                "tokenize":{"name":{"name","tokenizer","nltktokenizer","tokenizername","nltktokenizername"},
                            "kwargs":kwargSynonyms
