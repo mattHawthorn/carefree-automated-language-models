@@ -136,42 +136,70 @@ def binarySearch(x,listlike):
     else:
         return i+1
 
-
-def ngramIter(tokens,n,start=None,end=None,head=False):
-    ngram = deque()
-    tokens = iter(tokens)
-    i=1
-    if start:
-        i+=1
-        ngram.append(start)
+# benchmarks showed this to be about 3x faster than the 'optimized' deque solution
+def window(tokens, n, start=None, end=None, head=False):
+    iters = tee(tokens, n)
+    for i in range(1,n):
+        for j in range(i,n):
+                next(iters[j])
+    if start is not None:
         if head:
-            yield tuple(ngram)
-        if n == 1:
-            ngram.popleft()
-    while i < n:
-        i+=1
-        ngram.append(next(tokens))
-        if head:
-            yield tuple(ngram)
-
-    for token in tokens:
-        ngram.append(token)
-        yield tuple(ngram)
-        ngram.popleft()
-    if end:
-        ngram.append(end)
-        yield tuple(ngram)
-
-
-def charNgramIter(s,n,start=None,end=None,head=False):
-    if end:
-        s = s + end
-    if start:
-        s = start + s
-    if head:
-        return map(lambda i: s[i:(i+n)],range(len(s) - n + 1))
+            tup = [start]
+            yield (start,)
+            for thing in islice(iter(tokens),n-1):
+                tup.append(thing)
+                yield tuple(tup)
+        else:
+            yield (start, *tokens[0:n-1])
     else:
-        return chain(map(lambda i: s[0:i],range(0,n-1)), map(lambda i: s[i:(i+n)],range(len(s) - n + 1)))
+        if head:
+            for i in range(0,n):
+                yield tokens[0:i]
+    
+    for ngram in zip(*iters):
+        yield ngram
+
+    if end is not None:
+        yield (*tokens[1-n:], end)
+        
+ngramIter = window
+charNgramIter = window
+
+#def ngramIter(tokens,n,start=None,end=None,head=False):
+#    ngram = deque()
+#    tokens = iter(tokens)
+#    i=1
+#    if start:
+#        i+=1
+#        ngram.append(start)
+#        if head:
+#            yield tuple(ngram)
+#        if n == 1:
+#            ngram.popleft()
+#    while i < n:
+#        i+=1
+#        ngram.append(next(tokens))
+#        if head:
+#            yield tuple(ngram)
+#
+#    for token in tokens:
+#        ngram.append(token)
+#        yield tuple(ngram)
+#        ngram.popleft()
+#    if end:
+#        ngram.append(end)
+#        yield tuple(ngram)
+
+
+#def charNgramIter(s,n,start=None,end=None,head=False):
+#    if end:
+#        s = s + end
+#    if start:
+#        s = start + s
+#    if not head:
+#        return map(lambda i: s[i:(i+n)],range(len(s) - n + 1))
+#    else:
+#        return chain(map(lambda i: s[0:i],range(1,n)), map(lambda i: s[i:(i+n)],range(len(s) - n + 1)))
     
 
 def rollSum(indicators,n,start=None,end=None):
