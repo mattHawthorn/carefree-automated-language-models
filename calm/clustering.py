@@ -3,7 +3,7 @@ from random import sample
 from psutil import virtual_memory
 
 
-class sphericalKMeans():
+class SphericalKMeans():
     def __init__(self, k, initialization='random_samples', eps=1e-4, max_iter=100, n_init=5, logger=None, verbose=False, report_interval=10):
         self.initialization = initialization
         self.k = k
@@ -133,6 +133,7 @@ def norm(a):
 
 def unit_normalize(data, inplace=False):
     norms = norm(data)
+    # don't copy the data if you don't have to!
     if not np.allclose(norms, 1.0, rtol=1e-10, atol=1e-10):
         if not inplace:
             data = ((data.T) / norms).T
