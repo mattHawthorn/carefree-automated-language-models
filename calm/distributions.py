@@ -72,6 +72,7 @@ def distributions(labels1,labels2,smoothing=0.0):
     joint distribution and the marginals in such a way that 
     marginal(smooth(conditional)) = smooth(marginal)
     """
+    smoothing = float(smoothing)
     if len(labels1) != len(labels2):
         raise ValueError("label lists must have the same length")
     
