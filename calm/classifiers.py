@@ -2,6 +2,7 @@ from .tfidf import *
 from .objects import BagOfWords
 from .corpus import Document, BagOfWordsCorpus
 from .models import NgramModel
+from .utils import Memoized
 from operator import itemgetter
 from collections import defaultdict
 from numpy.random import random, normal
@@ -13,7 +14,7 @@ class kNNTextClassifier:
                  knnweighting=lambda x: 1,random=normal):
         self.k = k
         self.dfweighting = dfweighting
-        self.tfweighting = Memoizer(tfweighting)
+        self.tfweighting = Memoized(tfweighting)
         self.knnweighting = knnweighting
         self.docCount = None
         self.buckets = [[] for i in range(2**hashlength)]

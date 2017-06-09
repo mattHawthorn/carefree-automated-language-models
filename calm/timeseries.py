@@ -133,7 +133,7 @@ class TokenTimeSeriesAnalyzer:
         if show:
             plt.show()
         
-    def plot(self, token, converter="default", normalize=True, min_time=None, max_time=None, title=None, color=None):
+    def plot(self, token, converter="default", normalize=True, min_time=None, max_time=None, title=None, color=None, show=False):
         times,counts = self.series(token, converter=converter, normalize=normalize, min_time=min_time, max_time=max_time,show=False)
         fig, ax = plt.subplots()
         #ax.xaxis.set_major_locator(mdates.YearLocator)
@@ -147,6 +147,8 @@ class TokenTimeSeriesAnalyzer:
         plt.xticks(rotation="vertical")
         if show:
             plt.show()
+        else:
+            return fig, ax
 
 
 

@@ -7,6 +7,7 @@ from itertools import combinations
 from random import shuffle
 from sklearn.metrics import precision_score, recall_score, f1_score
 from pandas import DataFrame, Index, MultiIndex
+from .distributions import MI, NMI
 
 
 def IG(classFeatureMatrix):

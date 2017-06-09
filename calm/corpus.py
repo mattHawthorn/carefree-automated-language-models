@@ -491,4 +491,16 @@ class BagOfWordsCorpus:
             return self.docs.items()
         else:
             return enumerate(self.docs)
+    
+    def write_mallet(self, class_attr, file_path, doc_filter = lambda doc: True):
+        """
+        Write out text to a text file in a format that mallet can read.
+        must have keepTokens=True to do this.
+        """
+        if not self.keepTokens:
+            raise NotImplementedError("Only a corpus which retains token arrays can write to a mallet format")
+        with open(file_path, 'w') as f:
+            for doc in filter(doc_filter, self.docIter()):
+                tokens = self.getDocTokens(doc.ID)
+                print(" ".join((str(doc.ID), str(doc[class_attr]), " ".join(tokens))), file=f)
 

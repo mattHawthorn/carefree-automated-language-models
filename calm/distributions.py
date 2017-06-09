@@ -56,6 +56,8 @@ def H(p,q=None,normalize=False):
         q = p
     if normalize:
         p = p/p.sum()
+        q = q/q.sum()
+    
     h = log2(q)*p
     h[p==0.0] = 0.0
     return -1.0*h.sum()
@@ -65,7 +67,7 @@ def H(p,q=None,normalize=False):
 # Useful things for clustering evaluation ##################
 ############################################################
 
-def distributions(labels1,labels2,smoothing=0.0):
+def joint_and_marginals(labels1,labels2,smoothing=0.0):
     """
     marginal and joint distributions for a sequence of observations
     from a pair of disrete random variables, with additive smoothing on the
@@ -99,7 +101,7 @@ def distributions(labels1,labels2,smoothing=0.0):
     
 
 def MI(labels1,labels2,smoothing = 0.0):
-    d1,d2,a_true = distributions(labels1,labels2,smoothing)
+    d1,d2,a_true = joint_and_marginals(labels1,labels2,smoothing)
     
     a_ind = outer(d1,d2)
     
@@ -110,7 +112,7 @@ def MI(labels1,labels2,smoothing = 0.0):
 
 
 def NMI(labels1,labels2,smoothing = 0.0):
-    d1,d2,a_true = distributions(labels1,labels2,smoothing)
+    d1,d2,a_true = joint_and_marginals(labels1,labels2,smoothing)
     
     a_ind = outer(d1,d2)
     

@@ -1,6 +1,7 @@
 #coding: utf-8
-from .utils import Memoized,ngramIter
+from .utils import getsize, Memoized, ngramIter
 from itertools import repeat
+from copy import copy
 
 ########################################
 # BAGS OF WORDS AND NGRAMS #############
@@ -302,7 +303,7 @@ class FrequencyTrie(dict):
         if n is None:
             n = self.max_depth
         if n > self.max_depth:
-            raise ArgumentError("trie of max_depth {} will not accomodate length-{} ngrams".format(self.max_depth,n))
+            raise ValueError("trie of max_depth {} will not accomodate length-{} ngrams".format(self.max_depth,n))
         ngrams = ngramIter(tokens,n,start=start,end=end)
         self.addMany(ngrams)
         
@@ -383,7 +384,7 @@ class FrequencyTrie(dict):
         
     def __iadd__(self,trie):
         if trie.max_depth > self.max_depth:
-            raise ArgumentError("trie of max_depth {} will not accomodate length-{} ngrams".format(self.max_depth,trie.max_depth))
+            raise ValueError("trie of max_depth {} will not accomodate length-{} ngrams".format(self.max_depth,trie.max_depth))
         
         self._add(trie.ngramCounts())
         return self
@@ -417,4 +418,5 @@ class FrequencyTrieLeaf:
         if len(ngram) > 0:
             raise IndexError("ngram of length {} exceeds max_depth of 0".format(len(ngram)))
         return self
+
 

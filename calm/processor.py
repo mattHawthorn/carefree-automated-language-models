@@ -148,7 +148,7 @@ class Processor:
         if stopwordsFiles:
             if 'stopwords' in kwargs:
                 print("Warning: stopwords were specified in both the config file and the init args; "+
-                      "defaulting to the init args stopwords: {}".format(stopwordsFile))
+                      "defaulting to the init args stopwords: {}".format(stopwordsFiles))
             self.stopwords = set(loadStopwords(files=stopwordsFiles, configDir=configDir))
         elif 'stopwords' in kwargs:
             stopconfig = kwargs['stopwords']
@@ -333,6 +333,18 @@ class Processor:
     def tokenize(self,strings):
         return chain.from_iterable((self._tokenize(s) for s in strings))
 
+    def debug(self,string):
+        output = []
+        if type(string) is str:
+            tokens = [string]
+        else:
+            tokens = string
+
+        for f,args in self._sequence:
+            tokens = list(f(tokens,*args))
+            output.append(tokens)
+        
+        return output
 
     # the main processing function: take a doc as a string and return a list of tokens
     def process(self,string,ngrams=False):
