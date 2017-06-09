@@ -1,0 +1,48 @@
+---
+sequence:
+    - op: lower
+    # chunk urls
+    - op: replace
+      args:            # http:           port           //     www.         mail.google.com  /asdf1234&foo=bar&id=1234asdf
+          pattern: "((?:[a-zA-Z]{2,}:)(?:[0-9]{1,5})?(?:/+))([a-z0-9]+\\.)([.a-zA-Z0-9]*)(#?[a-zA-Z0-9~_.!?,;:+*=#$%&'()/\\[\\]-]*)"
+          repl: ' <\1> \2\3 '  # <http:>  www.mail.google.com
+    - op: replace
+      args:
+          pattern: '[0-9]{1,2}/[0-9]{1,2}(?:/(?:[0-9]{2}|[12][0-9]{3}))?'
+          repl: ' <date> '
+    - op: replace
+      args:
+          pattern: "\\s+[0-9]{4}('s\\s|\\s+)"
+          repl: ' <year> '
+    # floating point and ints
+    - op: replace
+      args:
+          pattern: '[0-9]+\.?[0-9]*'
+          repl: ' <num> '
+    # percent
+    - op: replace
+      args:
+          pattern: '_num_[\s]*?%'
+          repl: ' <percent> '
+    # currencies
+    - op: replace
+      args:
+          pattern: '([$\u00a3\u00a5\u20a0-\u20be])'
+          repl: ' <\1> '
+    # repeated characters reduce to 2
+    - op: replace
+      args:
+          pattern: '(.)\1{2,}'
+          repl: '\1\1'
+    # use the nltk TweetTokenizer
+    - op: tokenize
+      args:
+          name: TweetTokenizer
+          kwargs:
+              strip_handles: true
+    # remove quotes that aren't apostrophes; the tweet tokenizer pulls them out but also leaves them on phrases
+    - op: replace
+      args:
+          pattern: "[\"']*(.+)[\"']*"
+          repl: '\1'
+...

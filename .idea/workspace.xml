@@ -1,17 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="a3ee0565-bb9d-4d62-8a36-acccd92101d6" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/__init__.py" afterPath="$PROJECT_DIR$/calm/__init__.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/classifiers.py" afterPath="$PROJECT_DIR$/calm/classifiers.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/corpus.py" afterPath="$PROJECT_DIR$/calm/corpus.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/distributions.py" afterPath="$PROJECT_DIR$/calm/distributions.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/model_utils.py" afterPath="$PROJECT_DIR$/calm/model_utils.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/models.py" afterPath="$PROJECT_DIR$/calm/models.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/objects.py" afterPath="$PROJECT_DIR$/calm/objects.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/processor.py" afterPath="$PROJECT_DIR$/calm/processor.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/calm/timeseries.py" afterPath="$PROJECT_DIR$/calm/timeseries.py" />
-    </list>
+    <list default="true" id="a3ee0565-bb9d-4d62-8a36-acccd92101d6" name="Default" comment="" />
     <ignored path="calm.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
