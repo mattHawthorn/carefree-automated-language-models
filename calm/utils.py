@@ -1,7 +1,7 @@
 #coding:utf-8
 import sys
 from functools import partial
-from itertools import chain
+from itertools import chain, tee
 from numbers import Number
 from functools import partial
 from collections import Set, Mapping, deque
